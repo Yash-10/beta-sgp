@@ -7,16 +7,16 @@ from astropy.io import fits
 
 class PSF:
     def __init__(self, txt_file):
-        """Initialize a PSF object.
+        """Initialize a `PSF` object.
 
         Parameters
         ----------
         txt_file: str
-            A file containing PSF attributes.
+            A file containing PSF attributes obtained from DIAPL.
 
         Notes
         -----
-        For the structure of `txt_file`, see for example `psf_ccfbrd210048.bin.txt`
+        For the structure of `txt_file`, see for example `psf/examples/psf_ccfbrd210048.bin.txt`
 
         """
         self.ldeg = 2
@@ -87,7 +87,7 @@ class PSF:
 
         Notes
         -----
-        x and y ranges are hardcoded to lie from [-7, 8) i.e. 15X15.
+        x and y ranges lie from [-7, 8) i.e. 15X15 because we generate 15X15 PSF matrices.
 
         """
         pix_locs = []
@@ -121,6 +121,8 @@ class PSF:
         """Normalizes the 2D PSF such that all pixels sum up to 1.
         Thic could be helpful if the brightness of the convolved image must not be changed.
 
+        A helper function.
+
         """
         mat = self.get_psf_mat()
         mat = mat / np.sum(mat)
@@ -134,8 +136,7 @@ class PSF:
 
         Notes
         -----
-        Currently this cannot be used since we don't yet have candidate PSF
-        object database.
+        Currently this cannot be used since we don't yet have candidate PSF object database.
 
         """
         ncomp = self.ngauss * (self.ldeg+1) * (self.ldeg + 2) / 2
@@ -157,6 +158,7 @@ class PSF:
 
 if __name__ == "__main__":
     ### Draw PSF subplots for visualization ###
+    ### PSF bin txt files must be present in the current working directory ###
     mats = []
     titles = []
     for i, file_ in enumerate(os.listdir("./")):
@@ -166,7 +168,7 @@ if __name__ == "__main__":
             mats.append(psf.get_psf_mat())
             titles.append(file_.split(".")[0])
 
-    print(len(mats))
+    # print(len(mats))
     fig, ax = plt.subplots(3, 3, figsize=(5, 5))
 
     fig.tight_layout()
@@ -191,6 +193,6 @@ if __name__ == "__main__":
     ax[2, 2].set_title(titles[8])
     plt.show()
 
-    # The image corresponding to this PSF had the worst FWHM estimate from fwhms.bash (~11)
+    # Example: The image corresponding to this PSF had the worst FWHM estimate from fwhms.bash (~11)
     plt.imshow(PSF("psf_ccfbvb230022.bin.txt").get_psf_mat(), cmap="gray")
     plt.show()
