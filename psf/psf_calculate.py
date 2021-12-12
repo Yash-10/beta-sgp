@@ -58,6 +58,12 @@ class PSF:
         x, y: int
             x and y are the local coordinates used to describe the PSF, in the range: [-psf.hw/2, +psf.hw/2].
 
+        Notes
+        -----
+        References:
+        [1] Pych, W. (2013). Difference Image Analysis Package (DIAPL2).
+            Specifically, the `psf_core.c` script from the `phot` program was used.
+
         """
         # """Calculates PSF matrix locally, i.e. doesn't account for spatial PSF variation."""
 
@@ -94,7 +100,7 @@ class PSF:
         for i in range(-7, 8):
             for j in range(-7, 8):
                 pix_locs.append((i, j))
-        psf_mat = np.zeros(len(pix_locs)) # eg: 15*15 is the PSF matrix size to show
+        psf_mat = np.zeros(len(pix_locs)) # eg: 15*15 is the PSF matrix size to show.
         for i, pix_loc in enumerate(pix_locs):
             psf_mat[i] = self.calc_psf_pix(self.vec_coeffs, *pix_loc)
         self.psf_mat = psf_mat.reshape(15, 15)
