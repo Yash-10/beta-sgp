@@ -1,3 +1,11 @@
+###############
+
+# References: [1] https://matplotlib.org/stable/gallery/subplots_axes_and_figures/zoom_inset_axes.html
+
+# Note: The ``.fits`` files must be in the current directory.
+
+###############
+
 import numpy
 import matplotlib.pyplot as plt
 
@@ -5,19 +13,22 @@ from astropy.io import fits
 from astropy.nddata import Cutout2D
 from astropy.visualization import ImageNormalize, ZScaleInterval
 
-distorted = 'ccfbvc310078.fits'
+distorted = 'ccfbvc170119.fits'
 trail = 'ccfbte210072.fits'
 ideal = 'ccfbtf170075.fits'
 
 SIZE = 300
 
+# Note: (x, y) for each of the three examples are the same => All show the same region of the sky.
+
 ################### 1. Distort ##################
 distort_x_y = (477.122, 1264)
 image = fits.getdata(distorted)
 cutout = Cutout2D(image, distort_x_y, size=SIZE, mode='partial')
+# Use Z-scaling for better visualization.
 norm = ImageNormalize(cutout.data, interval=ZScaleInterval())
 
-print(cutout.to_original_position(distort_x_y))
+# print(cutout.to_original_position(distort_x_y))
 
 # plt.imshow(cutout.data, origin='lower', cmap='gray', norm=norm)
 # plt.show()
@@ -37,7 +48,7 @@ axins.set_yticklabels([])
 
 ax.indicate_inset_zoom(axins, edgecolor="springgreen")
 
-plt.savefig("ccfbvc310078_inset.png", bbox_inches="tight", dpi=500)
+plt.savefig("ccfbvc170119_inset.png", bbox_inches="tight", dpi=500)
 
 
 ############### 2. Trail ##############
@@ -46,7 +57,7 @@ image = fits.getdata(trail)
 cutout = Cutout2D(image, trail_x_y, size=SIZE, mode='partial')
 norm = ImageNormalize(cutout.data, interval=ZScaleInterval())
 
-print(cutout.to_original_position(trail_x_y))
+# print(cutout.to_original_position(trail_x_y))
 
 # plt.imshow(cutout.data, origin='lower', cmap='gray', norm=norm)
 # plt.show()
@@ -74,7 +85,7 @@ image = fits.getdata(ideal)
 cutout = Cutout2D(image, ideal_x_y, size=SIZE, mode='partial')
 norm = ImageNormalize(cutout.data, interval=ZScaleInterval())
 
-print(cutout.to_original_position(ideal_x_y))
+# print(cutout.to_original_position(ideal_x_y))
 
 # plt.imshow(cutout.data, origin='lower', cmap='gray', norm=norm)
 # plt.show()
