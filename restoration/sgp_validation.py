@@ -32,7 +32,7 @@ def setup():
         mean_psf = np.mean(data_psfs, axis=0)
         mean_psfs.append(mean_psf)
 
-    with open("trail_images.txt", "r") as f:
+    with open("test_images.txt", "r") as f:
         elliptical_images = sorted([line.strip() for line in f.readlines()])
 
     elliptical_indices = [science_imgs.index(elliptical_images[i]) for i in range(len(elliptical_images))]
