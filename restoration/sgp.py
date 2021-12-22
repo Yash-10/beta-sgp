@@ -402,7 +402,7 @@ def sgp(
         X[X < X_low_bound] = X_low_bound
         if clip_X_upp_bound:
             X[X > X_upp_bound] = X_upp_bound
-        
+
         # Since if `clip_X_upp_bound` is set to false, we do not clip at the upper bound, we need to ensure the upper bound still applies.
         assert all(np.isfinite(X)), "The scaling matrix violates either the lower or upper bound!"
 
@@ -424,7 +424,7 @@ def sgp(
 
         Valpha[M_alpha-1] = alpha2
 
-        if iter_ <= 20:  # TODO: Change 20 to something lower?
+        if iter_ <= 20:
             alpha = min(Valpha)
         elif alpha2/alpha1 < tau:
             alpha = min(Valpha)
@@ -635,7 +635,7 @@ if __name__ == "__main__":
             before_center = centroid_2dg(cutout.data)
             after_center = centroid_2dg(recon_img)
             centroid_err = (before_center[0]-after_center[0], before_center[1]-after_center[1])
-            l1_centroid_err = np.linalg.norm(before_center-after_center)
+            l2_centroid_err = np.linalg.norm(before_center-after_center)
 
             if verbose:
                 print("\n\n")
@@ -680,7 +680,7 @@ if __name__ == "__main__":
                     labelbottom=False
                 )
                 plt.show()
-            break
+
             ## Success/Failure based on flux criterion ##
             flux_thresh = 0.01 * MEDIAN_FLUX
             if flux_after < flux_before + flux_thresh and flux_after > flux_before - flux_thresh:
@@ -704,7 +704,7 @@ if __name__ == "__main__":
             # Update final needed parameters list.
             star_coord = (x, y)
             final_params_list.append(
-                [science_img, num_iters, execution_time, params, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), centroid_err, l1_centroid_err, before_ecc, after_ecc, before_fwhm, after_fwhm, flag]
+                [science_img, num_iters, execution_time, params, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), centroid_err, l2_centroid_err, before_ecc, after_ecc, before_fwhm, after_fwhm, flag]
             )
             break
 
