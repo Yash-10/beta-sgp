@@ -40,6 +40,8 @@ from astropy.io import fits
 from astropy.nddata import Cutout2D
 from astropy.stats import SigmaClip
 from astropy.wcs import WCS
+from astropy.convolution import Kernel2D
+from astropy.modeling import models, fitting
 
 import photutils
 from photutils.detection import DAOStarFinder, IRAFStarFinder
@@ -61,8 +63,9 @@ import matplotlib.pyplot as plt
 start = timer()
 
 plot = False
+save = True
 base_dir = 'working'
-star_cutout_size = 25
+# star_cutout_size = 25
 psfs = sorted(glob.glob("/home/yash/DIAPL/work/_PSF_BINS/psf_cc*.fits"))
 
 # Setup best science image for RRE
@@ -88,6 +91,29 @@ def get_bkg_and_rms(data, nsigma):
     rms_bkg = bkgrms.calc_background_rms(data)
     return bkg, rms_bkg
 
+def fit_gaussian_2d(data):
+    """Fits a 2D Gaussian to a star cutout and returns the model data."""
+    fit_w = fitting.LevMarLSQFitter()
+
+    y0, x0 = np.unravel_index(np.argmax(data), data.shape)
+    sigma = np.std(data)
+    amp = np.max(data)
+
+    w = models.Gaussian2D(amp, x0, y0, sigma, sigma)
+    print(w)
+    yi, xi = np.indices(data.shape)
+    g = fit_w(w, xi, yi, data)
+    model_data = g(xi, yi)
+    return model_data
+
+def decide_star_cutout_size(data, nsigma=3.):
+    star_mask = make_source_mask(data, nsigma=nsigma, npixels=4, dilate_size=1, sigclip_sigma=2., sigclip_iters=15)
+    star_mask = star_mask.astype(float)
+    i, j = np.where(star_mask==1.)
+    y_extent = max(i) - min(i)
+    x_extent = max(j) - min(j)
+    return max(x_extent, y_extent) + 3
+
 # # Extract WCS from calibrated image
 # hdul = fits.open('calibrated_ccfbxi300024.fits')
 # wcs = WCS(hdul[0].header)
@@ -109,10 +135,11 @@ y_centers = np.arange(128, 2048, 256)
 
 # TODO: Can use https://photutils.readthedocs.io/en/stable/api/photutils.segmentation.deblend_sources.html#photutils.segmentation.deblend_sources
 
-for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
+for image in ["working/cwcs_ccfbta060113.fits"]: # TODO: STart from remianing files, not from start again.
     corresponding_raw_image = image.split('/')[1].split('_')[1]
     _hdu = fits.open(image)[0]
     wcs = WCS(header=_hdu.header)
+    total_stars_restored = 0
     for x in x_centers:
         for y in y_centers:
             print(f'Current X, Y pair: {x}, {y}')
@@ -124,14 +151,14 @@ for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
                 # Get subdivison number
                 plt.title(f'{subdivx}_{subdivy}')
                 plt.show()
-            
+
             nsigma = 3.0
 
             # TODO: Question: Why use photutils when it cannot handle dense overlap whereas DIAPL can?
             bkg, rms_bkg = get_bkg_and_rms(cutout.data, nsigma=nsigma)
 
             # For our purposes, Iraf star finder works better than Daophot on same parameters.
-            iraf_find = IRAFStarFinder(fwhm=5.0, threshold=bkg+nsigma*rms_bkg)
+            iraf_find = IRAFStarFinder(fwhm=4.0, threshold=bkg+nsigma*rms_bkg)
             sources = iraf_find(cutout.data - bkg)
 
             print('---SOURCES---')
@@ -141,12 +168,12 @@ for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
             if sources is None:  # No sources in this subdivision
                 print('===== NO SOURCES =====')
                 # If no sources, then use old subdivision as the reconstructed subdivision since finally we want to create the whole frame.
-                fits.writeto(f'mosaicked_{corresponding_raw_image}.fits', _hdu.data)
+                fits.writeto(f'restored_{corresponding_raw_image}_{subdivx}_{subdivy}.fits', cutout.data, header=cutout.wcs.to_header())
                 continue  # This is a rare case and mostly happens for subdivs near the edges, else we are sure to find atleast one star.
 
             # On this subdivision, we estimate the background level by masking followed by sigma-clipping.
             # Currelty we assume background to not vary much in this subdivision, else 2d bkg maps are preferred.
-            mask = make_source_mask(cutout.data, nsigma=nsigma, npixels=5, dilate_size=11)
+            mask = make_source_mask(cutout.data, nsigma=nsigma, npixels=5, dilate_size=1)
             mean, median, std = sigma_clipped_stats(cutout.data, sigma=3.0, mask=mask)  # median is the bkg level.
             bkg_level = mean
 
@@ -155,13 +182,19 @@ for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
             #### bkg_2d = Background2D(cutout.data, box_size=(1, 1), filter_size=(1, 1), sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
             #### bkg_level = bkg_2d.background
 
-            for xcentroid, ycentroid in zip(sources['xcentroid'], sources['ycentroid']):
+            for xcentroid, ycentroid, orig_star_fwhm in zip(sources['xcentroid'], sources['ycentroid'], sources['fwhm']):
                 # TODO: Instead of hardcoding a size of 25, measure the approximate size of star and use it?
                 # TODO: Before restoration remove original source and add restored source.
+
+                # 45 is a safe size - we assume all stars are less than or equal to this size - a good assumption for this dataset.
+                # We set copy=True since this cutout is only used for good cutout size estimation.
+                check_star_cutout = Cutout2D(cutout.data, position=(xcentroid, ycentroid), size=(45, 45), wcs=cutout.wcs, mode='partial', fill_value=sys.float_info.epsilon, copy=True)
+                star_cutout_size = decide_star_cutout_size(check_star_cutout.data, nsigma=nsigma)
+
                 star_cutout = Cutout2D(cutout.data, position=(xcentroid, ycentroid), size=(star_cutout_size, star_cutout_size), wcs=cutout.wcs, mode='partial', fill_value=sys.float_info.epsilon)
 
                 # only_star_region_in_cutout = np.multiply(star_cutout, mask_cutout)
-                
+
                 # threshold = photutils.detect_threshold(star_cutout.data, 3)
                 # npixels = 5  # minimum number of connected pixels
                 # segm = photutils.detect_sources(star_cutout.data, threshold, npixels)
@@ -169,6 +202,8 @@ for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
                 #     continue
                 # segm_ = segm.data.astype(float)
                 # star_cutout.data[segm_==1.0] = 0.0
+
+                print(f'\n\nFWHM: {orig_star_fwhm}\n\n')
 
                 if plot:
                     plt.imshow(star_cutout.data)
@@ -185,13 +220,13 @@ for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
 
                 ## VALIDATION ##
                 max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
-                # params = validate_single(star_cutout.data, psf, bkg, xcentroid, ycentroid, search_type='coarse', flux_criteria=0, size=star_cutout_size, mode='final')
-                # if params is None:  # If no optimal parameter that satisfied all conditions, then use default.
-                #     print("\n\nNo best parameter found that matches all conditions. Falling to default params\n\n")
-                #     max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
-                # else:
-                #     max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = params
-                #     print(f"\n\nOptimal parameters: (max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M) = {params}\n\n")
+                params = validate_single(star_cutout.data, psf, bkg, xcentroid, ycentroid, search_type='coarse', flux_criteria=0, size=star_cutout_size, mode='final')
+                if params is None:  # If no optimal parameter that satisfied all conditions, then use default.
+                    print("\n\nNo best parameter found that matches all conditions. Falling to default params\n\n")
+                # max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
+                else:
+                    max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = params
+                    print(f"\n\nOptimal parameters: (max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M) = {params}\n\n")
 
                 # TODO: Note: The same ground-truth image seems to be used for all stamps.
 
@@ -204,88 +239,67 @@ for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
                     )
                 except:
                     continue
+                
+                # fig, ax = plt.subplots(1, 2)
+                # ax[0].imshow(star_cutout.data)
+                # ax[1].imshow(recon_img)
+                # plt.show()
 
-                mask_recon = make_source_mask(recon_img, nsigma=nsigma, npixels=5, dilate_size=11)
-                mean, median, std = sigma_clipped_stats(recon_img, sigma=3.0, mask=mask_recon)  # median is the bkg level.
-                recon_bkg_level = mean
-
-                # Print flux values to ensure they do not differ significantly.
-                try:  # If no source was detected, no point in running this.
-                    print(f'Flux before: {calculate_flux(star_cutout.data, size=star_cutout_size)}, Flux after: {calculate_flux(recon_img, size=star_cutout_size)}')
-                except:
-                    pass
+                # # Print flux values to ensure they do not differ significantly.
+                # try:  # If no source was detected, no point in running this.
+                #     print(f'Flux before: {calculate_flux(star_cutout.data, size=star_cutout_size)}, Flux after: {calculate_flux(recon_img, size=star_cutout_size)}')
+                # except:
+                #     pass
                 # cut = Cutout2D(star_cutout.data, position=(xcentroid, ycentroid), size=(star_cutout_size, star_cutout_size), wcs=_wcs, mode='partial', fill_value=sys.float_info.epsilon)
 
                 # For putting the restored star onto the original star, follow these steps
-                # star_cut_bkg, star_cut_rms_bkg = get_bkg_and_rms(star_cutout.data, nsigma=nsigma)
-                # star_mask1 = detect_sources(star_cutout.data, threshold=star_cut_bkg+(nsigma-2)*star_cut_rms_bkg, npixels=5)
-                star_mask = make_source_mask(star_cutout.data, nsigma=nsigma-2., npixels=4, dilate_size=1, sigclip_iters=15, sigclip_sigma=1.5)
-                recon_star_mask = make_source_mask(recon_img, nsigma=nsigma, npixels=4, dilate_size=1)
+                # TODO: Is kernel needed?
+                # kernel = Kernel2D(array=psf)
+                star_mask = make_source_mask(star_cutout.data, nsigma=nsigma, npixels=4, dilate_size=1, sigclip_sigma=2., sigclip_iters=15)
 
-                # recon_bkg, recon_rms_bkg = get_bkg_and_rms(recon_img, nsigma=nsigma)
-                # recon_star_mask1 = detect_sources(star_cutout.data, threshold=recon_bkg+nsigma*recon_rms_bkg, npixels=5)
+                # TODO: 20 size gave good restoration - adapt and switch between 25 and 20????
 
-                # if star_mask1 is None:
-                #     continue
-                
-                # plt.imshow(star_mask1)
-                # plt.imshow(star_mask2)
-                # plt.show()
+                star_mask = star_mask.astype(np.float64)
+
+                mask_recon = make_source_mask(recon_img, nsigma=nsigma, npixels=4, dilate_size=11)
+                mean, median, std = sigma_clipped_stats(recon_img, sigma=nsigma, mask=mask_recon)  # median is the bkg level.
+                recon_bkg_level = mean
+
+                recon_img -= recon_bkg_level
+                recon_img += bkg_level
 
                 # fig, ax = plt.subplots(1, 2)
                 # ax[0].imshow(star_cutout.data)
-                # ax[1].imshow(star_mask)
+                # ax[1].imshow(recon_img)
                 # plt.show()
 
-                star_mask = star_mask.astype(np.float64)
-                np.putmask(star_cutout.data, star_mask==1., 0.0)
-                star_cutout.data.astype(np.float64, copy=False)
-                # plt.imshow(star_cutout.data)
-                # plt.title("original")
-                # plt.show()
-                # plt.imshow(star_mask)
-                # plt.title("mask")
-                # plt.show()
-                # plt.imshow(recon_img)
-                # plt.title("recon")
-                # plt.show()
-                # TODO: Put recon only in recon source pixels region, else fill with estimated bkg - cannot use putmask
-                #if star_mask.size > recon_star_mask.size:  # Original source spans more pixels than reconstructed source
-
+                recon_star_mask = make_source_mask(recon_img, nsigma=nsigma, npixels=4, dilate_size=1)
                 recon_source = np.multiply(recon_img, recon_star_mask)
-                np.putmask(recon_source, recon_source==0.0, bkg_level)
+                star_mask = star_mask.astype(np.float64)
+                np.putmask(star_cutout.data, star_mask==1., recon_source.astype(np.float32))
+                star_cutout.data.astype(np.float64, copy=False)
 
-                # fig, ax = plt.subplots(1, 3)
-                # ax[0].imshow(star_cutout.data)
-                # ax[1].imshow(star_mask)
-                # ax[2].imshow(recon_img)
-                # plt.show()
+                np.putmask(star_cutout.data, np.logical_and(star_mask==1., recon_star_mask==0.), bkg_level)
 
-                # plt.imshow(recon_img)
-                # plt.show()
-                # plt.imshow(recon_star_mask)
-                # plt.show()
-                # plt.imshow(recon_source)
-                # plt.show()
+                # Print flux values to ensure they do not differ significantly.
+                try:  # If no source was detected, no point in running this.
+                    print(f'\n\nFlux before: {calculate_flux(star_cutout.data, size=star_cutout_size, nsigma=nsigma)}, Flux after: {calculate_flux(recon_img, size=star_cutout_size, nsigma=nsigma)}\n\n')
+                except:
+                    pass
 
-                np.putmask(star_cutout.data, star_mask==1., recon_source.astype(np.float32)-recon_bkg_level)
-
-                plt.imshow(star_cutout.data)
-                plt.show()
-                
                 # plt.imshow(star_cutout.data)
                 # plt.show()
-                # star_cutout.data[...] += bkg_level
 
-                # star_cutout.data[...] = recon_img + bkg_level
+                # plt.imshow(star_cutout.data)
+                # plt.show()
 
-                if plot:
-                    fig, ax = plt.subplots(1, 2)
-                    ax[0].imshow(star_cutout.data)
-                    ax[0].set_title('Original')
-                    ax[1].imshow(recon_img)
-                    ax[1].set_title('Reconstructed')
-                    plt.show()
+                # if plot:
+                #     fig, ax = plt.subplots(1, 2)
+                #     ax[0].imshow(star_cutout.data)
+                #     ax[0].set_title('Original')
+                #     ax[1].imshow(recon_img)
+                #     ax[1].set_title('Reconstructed')
+                #     plt.show()
 
             # All possible stars of a subdivision are restored
             # See https://docs.astropy.org/en/stable/nddata/utils.html#saving-a-2d-cutout-to-a-fits-file-with-an-updated-wcs
@@ -294,17 +308,23 @@ for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits')[:1]:
             # restored_cutout_filename = f'restored_{corresponding_raw_image}_{subdivx}_{subdivy}.fits'
             # _hdu.writeto(restored_cutout_filename)
 
-            restored_cutout_filename = f'restored_{corresponding_raw_image}_{subdivx}_{subdivy}.fits'
-            fits.writeto(restored_cutout_filename, cutout.data, header=cutout.wcs.to_header())
+            total_stars_restored += 1
 
-    arr, footprint = reproject_and_coadd(
-        [fits.open(f)[0] for f in glob.glob(f'restored_{corresponding_raw_image}_*.fits')],
-        output_projection=fits.open(f'{base_dir}/cwcs_{corresponding_raw_image}')[0].header, reproject_function=reproject_exact
-    )
-    fits.writeto(f'mosaicked_{corresponding_raw_image}.fits', arr)
+            if save:
+                restored_cutout_filename = f'restored_{corresponding_raw_image}_{subdivx}_{subdivy}.fits'
+                fits.writeto(restored_cutout_filename, cutout.data, header=cutout.wcs.to_header())
 
-    # Remove unecessary files
-    for i in  glob.glob(f'restored_{corresponding_raw_image}_*.fits'):
-        os.remove(i)
+    print(f'\n\nTtotal number of stars restored: {total_stars_restored}\n\n')
+    
+    if save:
+        arr, footprint = reproject_and_coadd(
+            [fits.open(f)[0] for f in glob.glob(f'restored_{corresponding_raw_image}_*.fits')],
+            output_projection=fits.open(f'{base_dir}/cwcs_{corresponding_raw_image}')[0].header, reproject_function=reproject_exact
+        )
+        fits.writeto(f'mosaicked_{corresponding_raw_image}.fits', arr)
+
+        # Remove unecessary files
+        for i in  glob.glob(f'restored_{corresponding_raw_image}_*.fits'):
+            os.remove(i)
 
 print(f'Completed in {timer() - start}s')
