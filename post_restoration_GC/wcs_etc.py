@@ -34,6 +34,7 @@ import os
 import sys
 from timeit import default_timer as timer
 import glob
+from pathlib import Path
 import numpy as np
 
 from astropy.io import fits
@@ -65,7 +66,6 @@ start = timer()
 plot = False
 save = True
 base_dir = 'working'
-# star_cutout_size = 25
 psfs = sorted(glob.glob("/home/yash/DIAPL/work/_PSF_BINS/psf_cc*.fits"))
 
 # Setup best science image for RRE
@@ -91,20 +91,19 @@ def get_bkg_and_rms(data, nsigma):
     rms_bkg = bkgrms.calc_background_rms(data)
     return bkg, rms_bkg
 
-def fit_gaussian_2d(data):
-    """Fits a 2D Gaussian to a star cutout and returns the model data."""
-    fit_w = fitting.LevMarLSQFitter()
+# def fit_gaussian_2d(data):
+#     """Fits a 2D Gaussian to a star cutout and returns the model data."""
+#     fit_w = fitting.LevMarLSQFitter()
 
-    y0, x0 = np.unravel_index(np.argmax(data), data.shape)
-    sigma = np.std(data)
-    amp = np.max(data)
+#     y0, x0 = np.unravel_index(np.argmax(data), data.shape)
+#     sigma = np.std(data)
+#     amp = np.max(data)
 
-    w = models.Gaussian2D(amp, x0, y0, sigma, sigma)
-    print(w)
-    yi, xi = np.indices(data.shape)
-    g = fit_w(w, xi, yi, data)
-    model_data = g(xi, yi)
-    return model_data
+#     w = models.Gaussian2D(amp, x0, y0, sigma, sigma)
+#     yi, xi = np.indices(data.shape)
+#     g = fit_w(w, xi, yi, data)
+#     model_data = g(xi, yi)
+#     return model_data
 
 def decide_star_cutout_size(data, nsigma=3.):
     star_mask = make_source_mask(data, nsigma=nsigma, npixels=4, dilate_size=1, sigclip_sigma=2., sigclip_iters=15)
@@ -133,10 +132,31 @@ def decide_star_cutout_size(data, nsigma=3.):
 x_centers = np.arange(128, 2048, 256)
 y_centers = np.arange(128, 2048, 256)
 
-# TODO: Can use https://photutils.readthedocs.io/en/stable/api/photutils.segmentation.deblend_sources.html#photutils.segmentation.deblend_sources
+# Option: Can use deblend_sources if source contamination in one stamp seems too high.
 
-for image in ["working/cwcs_ccfbta060113.fits"]: # TODO: STart from remianing files, not from start again.
+#########################################################################################
+### Below code for the main cutout extraction, star detection, and final mosaicking steps
+#########################################################################################
+
+param_file = Path("post_restoration_work_params.txt")
+if param_file.exists():  # Remove file if already exists.
+    os.remove(param_file)
+
+param_file = open("post_restoration_work_params.txt", "w")
+
+f = open("candidate_defect_images.txt", "r")
+
+defect_images = []
+for line in f.readlines():
+    defect_images.append(line.rstrip())
+
+for image in glob.glob(f'{base_dir}/cwcs_*[!m].fits'):
     corresponding_raw_image = image.split('/')[1].split('_')[1]
+    if corresponding_raw_image not in defect_images:
+        continue  # Only restore potential defect images.
+
+    param_file.write("\n")
+    param_file.write(f"{image}\n")
     _hdu = fits.open(image)[0]
     wcs = WCS(header=_hdu.header)
     total_stars_restored = 0
@@ -146,11 +166,6 @@ for image in ["working/cwcs_ccfbta060113.fits"]: # TODO: STart from remianing fi
             # TODO: Note, the cutouts currently have no overlap which was done in DIAPL, better to add it in the future.
             cutout = Cutout2D(_hdu.data, position=(x, y), size=256, wcs=wcs, mode='partial', fill_value=sys.float_info.epsilon)
             subdivx, subdivy = get_subdiv_number(x, y, x_centers, y_centers)
-            if plot:
-                plt.imshow(cutout.data)
-                # Get subdivison number
-                plt.title(f'{subdivx}_{subdivy}')
-                plt.show()
 
             nsigma = 3.0
 
@@ -184,12 +199,14 @@ for image in ["working/cwcs_ccfbta060113.fits"]: # TODO: STart from remianing fi
 
             for xcentroid, ycentroid, orig_star_fwhm in zip(sources['xcentroid'], sources['ycentroid'], sources['fwhm']):
                 # TODO: Instead of hardcoding a size of 25, measure the approximate size of star and use it?
-                # TODO: Before restoration remove original source and add restored source.
 
                 # 45 is a safe size - we assume all stars are less than or equal to this size - a good assumption for this dataset.
                 # We set copy=True since this cutout is only used for good cutout size estimation.
                 check_star_cutout = Cutout2D(cutout.data, position=(xcentroid, ycentroid), size=(45, 45), wcs=cutout.wcs, mode='partial', fill_value=sys.float_info.epsilon, copy=True)
-                star_cutout_size = decide_star_cutout_size(check_star_cutout.data, nsigma=nsigma)
+                try:
+                    star_cutout_size = decide_star_cutout_size(check_star_cutout.data, nsigma=nsigma)
+                except:
+                    star_cutout_size = 30
 
                 star_cutout = Cutout2D(cutout.data, position=(xcentroid, ycentroid), size=(star_cutout_size, star_cutout_size), wcs=cutout.wcs, mode='partial', fill_value=sys.float_info.epsilon)
 
@@ -220,7 +237,13 @@ for image in ["working/cwcs_ccfbta060113.fits"]: # TODO: STart from remianing fi
 
                 ## VALIDATION ##
                 max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
-                params = validate_single(star_cutout.data, psf, bkg, xcentroid, ycentroid, search_type='coarse', flux_criteria=0, size=star_cutout_size, mode='final')
+
+                params = None
+                try:
+                    params = validate_single(star_cutout.data, psf, bkg, xcentroid, ycentroid, search_type='coarse', flux_criteria=0, size=star_cutout_size, mode='final')
+                except:
+                    pass
+
                 if params is None:  # If no optimal parameter that satisfied all conditions, then use default.
                     print("\n\nNo best parameter found that matches all conditions. Falling to default params\n\n")
                 # max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
@@ -301,6 +324,8 @@ for image in ["working/cwcs_ccfbta060113.fits"]: # TODO: STart from remianing fi
                 #     ax[1].set_title('Reconstructed')
                 #     plt.show()
 
+                param_file.write(f"{star_cutout_size}\n")
+
             # All possible stars of a subdivision are restored
             # See https://docs.astropy.org/en/stable/nddata/utils.html#saving-a-2d-cutout-to-a-fits-file-with-an-updated-wcs
             # _hdu.data = star_cutout.data
@@ -314,7 +339,8 @@ for image in ["working/cwcs_ccfbta060113.fits"]: # TODO: STart from remianing fi
                 restored_cutout_filename = f'restored_{corresponding_raw_image}_{subdivx}_{subdivy}.fits'
                 fits.writeto(restored_cutout_filename, cutout.data, header=cutout.wcs.to_header())
 
-    print(f'\n\nTtotal number of stars restored: {total_stars_restored}\n\n')
+    print(f'\n\nTtotal number of stars restored from the whole image: {total_stars_restored}\n\n')
+    param_file.write(f"{total_stars_restored}")
     
     if save:
         arr, footprint = reproject_and_coadd(
