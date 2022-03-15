@@ -15,43 +15,59 @@ logging.basicConfig(filename='sgp_val.log', level=logging.INFO,
     format='%(asctime)s:%(funcName)s:%(message)s'
 )
 
-def setup():
+def setup(mode='test'):
     """
     Some setup required for validation.
+    mode: str
+        'test' if one aims to test SGP. For final restoration of the whole GC image, use 'final'.
 
     """
-    coord_files = sorted(glob.glob("cc*c.coo"))
-    # Note: There are some images with negative pixel values.
-    science_imgs = sorted(glob.glob("cc*[!m]c.fits"))
-    psfs = sorted(glob.glob("_PSF_BINS/psf_cc*.fits"))
+    if mode == 'test':
+        coord_files = sorted(glob.glob("cc*c.coo"))
+        # Note: There are some images with negative pixel values.
+        science_imgs = sorted(glob.glob("cc*[!m]c.fits"))
+        psfs = sorted(glob.glob("_PSF_BINS/psf_cc*.fits"))
 
-    # Calculate mean PSF (mean of PSFs over a single frame) as a prior for the SGP method.
-    mean_psfs = []
-    for i in range(0, len(psfs), 4):
-        data_psfs = [fits.getdata(psfs[n]) for n in range(i, i+4)]
-        mean_psf = np.mean(data_psfs, axis=0)
-        mean_psfs.append(mean_psf)
+        # Calculate mean PSF (mean of PSFs over a single frame) as a prior for the SGP method.
+        mean_psfs = []
+        for i in range(0, len(psfs), 4):
+            data_psfs = [fits.getdata(psfs[n]) for n in range(i, i+4)]
+            mean_psf = np.mean(data_psfs, axis=0)
+            mean_psfs.append(mean_psf)
 
-    with open("test_images.txt", "r") as f:
-        elliptical_images = sorted([line.strip() for line in f.readlines()])
+        with open("test_images.txt", "r") as f:
+            elliptical_images = sorted([line.strip() for line in f.readlines()])
 
-    elliptical_indices = [science_imgs.index(elliptical_images[i]) for i in range(len(elliptical_images))]
-    elliptical_coord_files = sorted([coord_files[elliptical_indices[i]] for i in range(len(elliptical_indices))])
-    elliptical_psfs = [mean_psfs[elliptical_indices[i]] for i in range(len(elliptical_indices))]
+        elliptical_indices = [science_imgs.index(elliptical_images[i]) for i in range(len(elliptical_images))]
+        elliptical_coord_files = sorted([coord_files[elliptical_indices[i]] for i in range(len(elliptical_indices))])
+        elliptical_psfs = [mean_psfs[elliptical_indices[i]] for i in range(len(elliptical_indices))]
 
-    # Get best image.
-    best_coord_file = "ccfbtf170075c.coo"
+        # Get best image.
+        best_coord_file = "ccfbtf170075c.coo"
 
-    best_sci_img = fits.getdata("ccfbtf170075c.fits")
-    best_psfs = [
-                    "_PSF_BINS/psf_ccfbtf170075_1_1_img.fits", "_PSF_BINS/psf_ccfbtf170075_1_2_img.fits",
-                    "_PSF_BINS/psf_ccfbtf170075_2_1_img.fits", "_PSF_BINS/psf_ccfbtf170075_2_2_img.fits"
-                ]
-    best_psf = np.mean([fits.getdata(psfname) for psfname in best_psfs], axis=0)
+        best_sci_img = fits.getdata("ccfbtf170075c.fits")
+        best_psfs = [
+                        "_PSF_BINS/psf_ccfbtf170075_1_1_img.fits", "_PSF_BINS/psf_ccfbtf170075_1_2_img.fits",
+                        "_PSF_BINS/psf_ccfbtf170075_2_1_img.fits", "_PSF_BINS/psf_ccfbtf170075_2_2_img.fits"
+                    ]
+        best_psf = np.mean([fits.getdata(psfname) for psfname in best_psfs], axis=0)
 
-    return best_sci_img, best_coord_file, best_psf
+        return best_sci_img, best_coord_file, best_psf
+    elif mode == 'final':
+        base_dir = 'working'
+        best_sci_name = f'{base_dir}/cwcs_ccfbtf170075.fits'
+        best_sci_img = fits.getdata(best_sci_name)
+        best_coord_file = 'best_coord_photutils.csv'
 
-def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0, size=25):
+        best_psfs = [
+                        "/home/yash/DIAPL/work/_PSF_BINS/psf_ccfbtf170075_1_1_img.fits", "/home/yash/DIAPL/work/_PSF_BINS/psf_ccfbtf170075_1_2_img.fits",
+                        "/home/yash/DIAPL/work/_PSF_BINS/psf_ccfbtf170075_2_1_img.fits", "/home/yash/DIAPL/work/_PSF_BINS/psf_ccfbtf170075_2_2_img.fits"
+                    ]
+        best_psf = np.mean([fits.getdata(psfname) for psfname in best_psfs], axis=0)
+
+        return best_sci_img, best_coord_file, best_psf
+
+def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0, size=25, mode='test'):
     """
     search_type: Whether to do an extensive grid search over SGP parameters or a coarser search,
     else use 'fine', defaults to 'coarse'.
@@ -74,7 +90,7 @@ def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0,
     MEDIAN_FLUX = 61169.92578125
     from sgp import sgp, calculate_flux
 
-    best_sci_img, best_coord_file, best_psf = setup()  # Hack.
+    best_sci_img, best_coord_file, best_psf = setup(mode=mode)  # Hack.
 
     optimal_params_set = []
     optimal_projs = -1
@@ -87,12 +103,12 @@ def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0,
     #######################################
     if search_type == 'coarse':
         param_grid = {
-            "max_projs": [100, 500, 1000, 2000],
-            "gamma": [1e-4, 1e-1],
+            "max_projs": [100, 500],
+            "gamma": [1e-4],
             "beta": [0.4],
-            "alpha_min": [1e-2, 1e-4, 1e-6],
-            "alpha_max": [1e2, 1e4, 1e6],
-            "alpha": [1e-2, 1, 1e2, 1e4],
+            "alpha_min": [1e-2],
+            "alpha_max": [1e2, 1e4],
+            "alpha": [1e-2, 1, 1e2],
             "M_alpha": [3],
             "tau": [0.5],
             "M": [1, 3]
@@ -154,7 +170,8 @@ def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0,
 
             recon_ecc, recon_fwhm = calculate_ellipticity_fwhm(recon_img, use_moments=True)
             data_ecc, data_fwhm = calculate_ellipticity_fwhm(data, use_moments=True)
-            least_recon_error_current = rel_recon_errors[-2]  # Second-last error would be the least.
+            print(rel_recon_errors)
+            least_recon_error_current = rel_recon_errors[-1]  # Second-last error would be the least.
             if recon_ecc < data_ecc and least_recon_error_current < least_err:
                 best_params = (optimal_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M)
                 least_ellipticity = recon_ecc
