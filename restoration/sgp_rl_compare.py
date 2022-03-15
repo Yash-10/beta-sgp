@@ -24,165 +24,162 @@ from photutils.segmentation import SourceCatalog
 from sgp_validation import validate_single
 from flux_conserve_proj import projectDF
 from radprof_ellipticity import radial_profile, calculate_ellipticity_fwhm
-from sgp import sgp, calculate_flux
-from richardson_lucy import rl
+from sep import Background
+from sgp import sgp, calculate_flux, apply_mask, DEFAULT_PARAMS
+from rl import rl
 
 if __name__ == "__main__":
-    DEFAULT_PARAMS = (1000, 1e-4, 0.4, 1.3, 1e-1, 1e1, 3, 0.5, 1)
+    with open("candidate_defect_images.txt", "r") as f:
+        defect_images = f.read().splitlines()
 
-    plt.rcParams.update({'font.size': 14})
-    ##### Some user parameters ####
-    save = True
+    plot = False
     verbose = True
-    plot = True
-
-    # List to store parameters and results.
+    save = True
     compare_list = []
-
-    # Median flux of all star stamps from all images.
-    MEDIAN_FLUX = 61169.92578125  # Calculate using all stamps from the dataset.
-    # Count variables for success/failure for flux criterion.
     success = 0
     failure = 0
-
-    ########## Get the ideal star stamp ##########
-    best_coord_file = "ccfbtf170075c.coo"
-
-    best_sci_name = "ccfbtf170075c.fits"
-    best_sci_img = fits.getdata(best_sci_name)
-    best_psfs = [
-                    "_PSF_BINS/psf_ccfbtf170075_1_1_img.fits", "_PSF_BINS/psf_ccfbtf170075_1_2_img.fits",
-                    "_PSF_BINS/psf_ccfbtf170075_2_1_img.fits", "_PSF_BINS/psf_ccfbtf170075_2_2_img.fits"
-                ]
-    best_psf = np.mean([fits.getdata(psfname) for psfname in best_psfs], axis=0)  # Take absolute value of PSF before mean is taken?
-
-    # Best star stamp
-    arr = np.loadtxt(best_coord_file, skiprows=3, usecols=[0, 1])
     size = 25
-    for x, y in arr:
-        # Extract star stamp.
-        cutout = Cutout2D(best_sci_img, (x, y), size, mode='partial', fill_value=sys.float_info.epsilon)
-        best = cutout.data
-        break
-    
-    best_center = centroid_2dg(best)
-    best_profile = radial_profile(best, best_center)
+    offset = None
+    original_radprofs = []
+    count = 0
+    MEDIAN_FLUX = 61169.92578125  # Calculate using all stamps from the dataset.
 
-    ### Get all files ###
-    coord_files = sorted(glob.glob("cc*c.coo"))
-    science_imgs = sorted(glob.glob("cc*[!m]c.fits"))
-    psfs = sorted(glob.glob("_PSF_BINS/psf_cc*.fits"))
+    _best_base_name = 'ccfbtf170075' + 'r'
+    best_cut_image = '.'.join((_best_base_name, 'fits'))
+    best_cut_coord_list = '.'.join((_best_base_name, 'coo'))
 
     # Calculate mean PSF (mean of PSFs over a single frame) as a prior for the SGP method.
+    psfs = sorted(glob.glob("/home/yash/DIAPL/work/_PSF_BINS/psf_cc*.fits"))
     mean_psfs = []
     for i in range(0, len(psfs), 4):
         data_psfs = [fits.getdata(psfs[n]) for n in range(i, i+4)]
         mean_psf = np.mean(data_psfs, axis=0)
         mean_psfs.append(mean_psf)
 
-    with open("test_images.txt", "r") as f:
-        elliptical_images = sorted([line.strip() for line in f.readlines()])
-    
-    elliptical_images = elliptical_images[:20]
+    start = timer()
+    for image, psf in zip(sorted(defect_images), mean_psfs):
+        if image not in defect_images:
+            continue
+        for ix, iy in zip([1, 2], [2, 1]):
+            _base_name = '_'.join((image.split('.')[0] + 'r', str(ix), str(iy)))
+            cut_image = '.'.join((_base_name, 'fits'))
+            final_name = '_'.join((_base_name, str(ix), str(iy)))   # Need this just to match naming convention.
+            cut_coord_list = '.'.join((final_name, 'coo'))
 
-    elliptical_indices = [science_imgs.index(elliptical_images[i]) for i in range(len(elliptical_images))]
-    elliptical_coord_files = sorted([coord_files[elliptical_indices[i]] for i in range(len(elliptical_indices))])
-    elliptical_psfs = [mean_psfs[elliptical_indices[i]] for i in range(len(elliptical_indices))]
+            try:  # For some reason, some subdivisions cannot be extracted (needs investigation).
+                data = fits.getdata(cut_image)
+            except:  # If "r" suffixed images cannot be extracted, used the non-resampled version.
+                _base_name = '_'.join((image.split('.')[0], str(ix), str(iy)))
+                cut_image = '.'.join((_base_name, 'fits'))
+                data = fits.getdata(cut_image)
+                cut_coord_list = '.'.join((_base_name, 'coo'))
 
-    elliptical_coord_files = elliptical_coord_files
-    elliptical_psfs = elliptical_psfs
-
-    figs = []
-    original_radprofs = []
-    c = 1
-    for coord_list, science_img, psf in zip(elliptical_coord_files, elliptical_images, elliptical_psfs):
-        image = fits.getdata(science_img)
-
-        # Calculate background level.
-        arr = np.loadtxt(coord_list, skiprows=3, usecols=[0, 1])
-
-        if arr.size == 2:
-            arr = np.expand_dims(arr, axis=0)
-        for x, y in arr:
-            # Extract star stamps.
-            cutout = Cutout2D(image, (x, y), size, mode='partial', fill_value=sys.float_info.epsilon)
-            # Background estimate.
-            bkg = MedianBackground()
-            bkg = bkg.calc_background(cutout.data)
-
-            #SGP to get the reconstrcted image.
-
-            #################
-            ## VALIDATION ###
-            #################
-
-            params = validate_single(cutout.data, psf, bkg, x, y, search_type='coarse', flux_criteria=0, size=size)
-            if params is None:  # If no optimal parameter that satisfied all conditions, then use default.
-                print("\n\nNo best parameter found that matches all conditions. Falling to default params\n\n")
-                max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
-            else:
-                max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = params
-                print(f"\n\nOptimal parameters: (max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M) = {params}\n\n")
-
-            ###########
-            ### SGP ###
-            ###########
             try:
-                sgp_recon_img, sgp_rel_klds, sgp_rel_recon_errors, sgp_num_iters, sgp_extract_coord, sgp_execution_time, sgp_best_section = sgp(
-                    cutout.data, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
-                    alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=best_sci_img, best_coord=best_coord_file,
-                    max_projs=max_projs, size=size, init_recon=2, stop_criterion=2, current_xy=(x, y), save=False,
-                    filename=science_img, verbose=True, clip_X_upp_bound=False
+                stars = np.loadtxt(cut_coord_list, skiprows=3, usecols=[0, 1])
+            except OSError:
+                continue
+            stars = apply_mask(stars, data, size=25)  # Exclude stars very close to the edge.
+
+            if stars.size == 2:
+                stars = np.expand_dims(stars, axis=0)
+            for xc, yc in stars:
+                check_star_cutout = Cutout2D(data, position=(xc, yc), size=40)  # 40 is a safe size choice.
+                # Estimate background on this check stamp
+                d = np.ascontiguousarray(check_star_cutout.data)
+                d = d.byteswap().newbyteorder()
+                del check_star_cutout
+                bkg = Background(d, bw=8, bh=8, fw=3, fh=3)  # 8 = 40 / 5
+                bkg.subfrom(d)
+
+                cutout = Cutout2D(data, position=(xc, yc), size=size)
+
+                ground_truth_star_stamp_name = '_'.join((_best_base_name, str(ix), str(iy))) + '.fits'
+                ground_truth_star_stamp = fits.getdata(ground_truth_star_stamp_name)
+                best_cut_image = Cutout2D(ground_truth_star_stamp, (xc, yc), size=size).data
+
+                flux_before = calculate_flux(
+                    cutout.data, bkg.globalback, offset, size=size
                 )
-            except TypeError:
-                continue
 
-            # RL to get the reconstrcted image.
-            rl_recon_img, rl_rel_recon_errors, rl_num_iters, rl_execution_time, rl_extract_coord = rl(
-                cutout.data, psf, bkg, max_iter=1000, best_img=best_sci_img, best_coord=best_coord_file, current_xy=(x, y),
-                flux_conserve=False, save=False, filename=science_img
-            )
+                if np.any(cutout.data > 1e10):
+                    continue
 
-            try:
-                flux_before = calculate_flux(cutout.data, size=size)
-                sgp_flux_after = calculate_flux(sgp_recon_img.reshape(size, size), size=size)
-                rl_flux_after = calculate_flux(rl_recon_img.reshape(size, size), size=size)
-            except TypeError:
-                continue
+                ###########
+                ### SGP ###
+                ###########
+                max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
+                try:
+                    sgp_recon_img, sgp_rel_klds, sgp_rel_recon_errors, sgp_num_iters, sgp_extract_coord, sgp_execution_time, sgp_best_section = sgp(
+                        cutout.data, psf, bkg.globalback, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
+                        alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=None, best_coord=(xc, yc), best_cutout=best_cut_image,
+                        max_projs=max_projs, size=size, init_recon=2, stop_criterion=2, current_xy=(xc, yc), save=False,
+                        filename=image, verbose=True, clip_X_upp_bound=False, diapl=False, to_search_for_best_stamp=False, offset=offset
+                    )
+                except TypeError:
+                    continue
 
-            # We calculate ellipticity and fwhm from the `radprof_ellipticity` module.
-            before_ecc, before_fwhm = calculate_ellipticity_fwhm(cutout.data, use_moments=True)
-            sgp_after_ecc, sgp_after_fwhm = calculate_ellipticity_fwhm(sgp_recon_img, use_moments=True)
-            rl_after_ecc, rl_after_fwhm = calculate_ellipticity_fwhm(rl_recon_img, use_moments=True)
+                # RL to get the reconstrcted image.
+                rl_recon_img, rl_rel_recon_errors, rl_num_iters, rl_execution_time, rl_extract_coord = rl(
+                        cutout.data, psf, bkg.globalback, max_iter=1500, normalize_kernel=True,
+                        best_stamp=best_cut_image, current_xy=(xc, yc)
+                    )
 
-            before_center = centroid_2dg(cutout.data)
+                sgp_bkg_after = MedianBackground().calc_background(sgp_recon_img)
+                sgp_flux_after = calculate_flux(
+                    sgp_recon_img, sgp_bkg_after, offset, size=size
+                )
+                rl_bkg_after = MedianBackground().calc_background(rl_recon_img)
+                rl_flux_after = calculate_flux(rl_recon_img.reshape(size, size), rl_bkg_after, offset, size=size)
 
-            sgp_after_center = centroid_2dg(sgp_recon_img)
-            sgp_centroid_err = (before_center[0]-sgp_after_center[0], before_center[1]-sgp_after_center[1])
-            sgp_l1_centroid_err = np.linalg.norm(before_center-sgp_after_center, ord=1)
+                # We calculate ellipticity and fwhm from the `radprof_ellipticity` module.
+                before_ecc, before_fwhm = calculate_ellipticity_fwhm(cutout.data, use_moments=True)
+                sgp_after_ecc, sgp_after_fwhm = calculate_ellipticity_fwhm(sgp_recon_img, use_moments=True)
+                rl_after_ecc, rl_after_fwhm = calculate_ellipticity_fwhm(rl_recon_img, use_moments=True)
 
-            rl_after_center = centroid_2dg(rl_recon_img)
-            rl_centroid_err = (before_center[0]-rl_after_center[0], before_center[1]-rl_after_center[1])
-            rl_l1_centroid_err = np.linalg.norm(before_center-rl_after_center, ord=1)
+                before_center = centroid_2dg(cutout.data)
 
-            ######################
-            ### Radial Profile ###
-            ######################
+                sgp_after_center = centroid_2dg(sgp_recon_img)
+                sgp_centroid_err = (before_center[0]-sgp_after_center[0], before_center[1]-sgp_after_center[1])
+                sgp_l1_centroid_err = np.linalg.norm(before_center-sgp_after_center, ord=1)
 
-            orig_center = centroid_2dg(cutout.data)
-            original_radprof = radial_profile(cutout.data, orig_center)[:17]
-            
-            rl_recon_radprof = radial_profile(rl_recon_img, rl_after_center)
-            sgp_recon_radprof = radial_profile(sgp_recon_img, sgp_after_center)
+                rl_after_center = centroid_2dg(rl_recon_img)
+                rl_centroid_err = (before_center[0]-rl_after_center[0], before_center[1]-rl_after_center[1])
+                rl_l1_centroid_err = np.linalg.norm(before_center-rl_after_center, ord=1)
 
-            # Update final needed parameters list.
-            star_coord = (x, y)
-            compare_list.append(
-                [science_img, rl_num_iters, rl_execution_time, sgp_num_iters, sgp_execution_time, rl_after_ecc, rl_after_fwhm, sgp_after_ecc, sgp_after_fwhm, original_radprof, rl_recon_radprof, sgp_recon_radprof, rl_centroid_err, sgp_centroid_err, rl_l1_centroid_err, sgp_l1_centroid_err]
-            )
+                ######################
+                ### Radial Profile ###
+                ######################
+
+                orig_center = centroid_2dg(cutout.data)
+                original_radprof = radial_profile(cutout.data, orig_center)[:17]
+                
+                rl_recon_radprof = radial_profile(rl_recon_img, rl_after_center)
+                sgp_recon_radprof = radial_profile(sgp_recon_img, sgp_after_center)
+
+                # Update final needed parameters list.
+                star_coord = (xc, yc)
+                compare_list.append(
+                    [image, rl_num_iters, rl_execution_time, sgp_num_iters, sgp_execution_time, rl_after_fwhm, sgp_after_fwhm, rl_l1_centroid_err, sgp_l1_centroid_err]
+                )
+                count += 1
+                break
             break
+        
+        if count == 30:
+            if save:
+                compare = np.array(compare_list)
+                df = pd.DataFrame(compare)
+                df.columns = [
+                    "image", "rl num_iters", "rl exec_time (s)", "fc-sgp num_iters", "fc-sgp exec_time (s)", "rl fwhm (pix)", "fc-sgp fwhm (pix)", "rl l1 centroid_err", "fc-sgp l1 centroid_err"
+                ]
+                df.to_csv("sgp_rl_compare_metrics.csv")
+            sys.exit()
 
     if save:
         compare = np.array(compare_list)
         df = pd.DataFrame(compare)
-        df.to_csv("compare_metrics.csv")
+        df.columns = [
+            "image", "rl num_iters", "rl exec_time (s)", "fc-sgp num_iters", "fc-sgp exec_time (s)", "rl fwhm (pix)", "fc-sgp fwhm (pix)", "rl l1 centroid_err", "fc-sgp l1 centroid_err"
+        ]
+        print(df)
+        df.to_csv("sgp_rl_compare_metrics.csv")
