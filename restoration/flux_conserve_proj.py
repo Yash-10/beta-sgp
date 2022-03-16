@@ -59,7 +59,8 @@ def projectDF(b, c, dia, lambda_=0, dlambda_=1, tol_lam=1e-11, biter=0, siter=0,
                 with np.errstate(all='raise'):
                     dlambda_ = dlambda_ + dlambda_/s
             except Exception:
-                raise ValueError("Something bad happened!")
+                break
+                # raise ValueError("Something bad happened!")
             lambda_ = lambda_ - dlambda_
             ru = r
             x = np.maximum(0, np.divide(c+lambda_, dia))
