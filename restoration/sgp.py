@@ -138,11 +138,15 @@ def calculate_flux(stamp, bkg, offset=None, size=25):
     """
     # Reshape
     stamp = stamp.reshape(size, size)
-    if offset is not None:
+    if offset is not None and isinstance(bkg, float):
         stamp = stamp[offset:size-offset, offset:size-offset]
     N = stamp.size
 
-    return stamp.sum() - N * bkg  # Since stamp is background subtracted, we sum over all pixels only.
+    # Since stamp is background subtracted, we sum over all pixels only.
+    if isinstance(bkg, float):
+        return stamp.sum() - N * bkg
+    else:
+        return (stamp - bkg).sum()
 
 # def calculate_psnr(img, truth, max_value=1):
 #     """"Calculating peak signal-to-noise ratio (PSNR) between two images.
@@ -602,9 +606,11 @@ if __name__ == "__main__":
         mean_psfs.append(mean_psf)
 
     start = timer()
-    for image, psf in zip(sorted(defect_images), mean_psfs):
+    for image in sorted(defect_images):
         if image not in defect_images:
             continue
+        psfs = glob.glob(f"/home/yash/DIAPL/work/_PSF_BINS/psf_{image.split('.')[0]}_*_*.fits")
+        psf = np.mean([fits.getdata(p) for p in psfs], axis=0)
         for ix, iy in zip([1, 2], [2, 1]):
             _base_name = '_'.join((image.split('.')[0] + 'r', str(ix), str(iy)))
             cut_image = '.'.join((_base_name, 'fits'))
@@ -676,6 +682,7 @@ if __name__ == "__main__":
                 after_center = centroid_2dg(recon_img)
                 centroid_err = (before_center[0]-after_center[0], before_center[1]-after_center[1])
                 l2_centroid_err = np.linalg.norm(before_center-after_center)
+                l1_centroid_err = abs(before_center[0]-after_center[0]) + abs(before_center[1]-after_center[1])
 
                 if verbose:
                     print("\n\n")
@@ -741,10 +748,15 @@ if __name__ == "__main__":
                 print(f"Success till now: {success}")
                 print(f"Failure till now: {failure}")
 
+                execution_time = np.round(execution_time, 3)
+                centroid_err = np.round(centroid_err, 3)
+                l1_centroid_err = np.round(l1_centroid_err, 3)
+                l2_centroid_err = np.round(l2_centroid_err, 3)
+
                 # Update final needed parameters list.
                 star_coord = (xc, yc)
                 final_params_list.append(
-                    [image, num_iters, execution_time, DEFAULT_PARAMS, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), centroid_err, l2_centroid_err, before_ecc, after_ecc, before_fwhm, after_fwhm, flag]
+                    [image, num_iters, execution_time, DEFAULT_PARAMS, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), centroid_err, l1_centroid_err, l2_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
                 )
                 count += 1
                 break
@@ -758,6 +770,7 @@ if __name__ == "__main__":
                 np.save("original_radprofs.npy", np.array(original_radprofs))
                 final_params = np.array(final_params_list)
                 df = pd.DataFrame(final_params)
+                df.columns = ["image", "num_iters", "execution_time", "DEFAULT_PARAMS", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "centroid_err", "l1_centroid_err", "l2_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
                 df.to_csv("sgp_params_and_metrics.csv")
             sys.exit()
 

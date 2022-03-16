@@ -140,11 +140,18 @@ if __name__ == "__main__":
 
                 sgp_after_center = centroid_2dg(sgp_recon_img)
                 sgp_centroid_err = (before_center[0]-sgp_after_center[0], before_center[1]-sgp_after_center[1])
-                sgp_l1_centroid_err = np.linalg.norm(before_center-sgp_after_center, ord=1)
+                sgp_l1_centroid_err = abs(before_center[0]-sgp_after_center[0]) + abs(before_center[1]-sgp_after_center[1])
 
                 rl_after_center = centroid_2dg(rl_recon_img)
                 rl_centroid_err = (before_center[0]-rl_after_center[0], before_center[1]-rl_after_center[1])
-                rl_l1_centroid_err = np.linalg.norm(before_center-rl_after_center, ord=1)
+                rl_l1_centroid_err = abs(before_center[0]-rl_after_center[0]) + abs(before_center[1]-rl_after_center[1])
+
+                sgp_after_fwhm = np.round(sgp_after_fwhm.value, 3)
+                rl_after_fwhm = np.round(rl_after_fwhm.value, 3)
+                sgp_l1_centroid_err = np.round(sgp_l1_centroid_err, 3)
+                rl_l1_centroid_err = np.round(rl_l1_centroid_err, 3)
+                sgp_execution_time = np.round(sgp_execution_time, 3)
+                rl_execution_time = np.round(rl_execution_time, 3)
 
                 ######################
                 ### Radial Profile ###
@@ -152,9 +159,9 @@ if __name__ == "__main__":
 
                 orig_center = centroid_2dg(cutout.data)
                 original_radprof = radial_profile(cutout.data, orig_center)[:17]
-                
-                rl_recon_radprof = radial_profile(rl_recon_img, rl_after_center)
-                sgp_recon_radprof = radial_profile(sgp_recon_img, sgp_after_center)
+
+                # rl_recon_radprof = radial_profile(rl_recon_img, rl_after_center)
+                # sgp_recon_radprof = radial_profile(sgp_recon_img, sgp_after_center)
 
                 # Update final needed parameters list.
                 star_coord = (xc, yc)
@@ -172,6 +179,12 @@ if __name__ == "__main__":
                 df.columns = [
                     "image", "rl num_iters", "rl exec_time (s)", "fc-sgp num_iters", "fc-sgp exec_time (s)", "rl fwhm (pix)", "fc-sgp fwhm (pix)", "rl l1 centroid_err", "fc-sgp l1 centroid_err"
                 ]
+                # df["rl exec_time (s)"] = np.round(df["rl exec_time (s)"], 3)
+                # df["fc-sgp exec_time (s)"] = np.round(df["fc-sgp exec_time (s)"], 3)
+                # df["rl fwhm (pix)"] = np.round(df["rl fwhm (pix)"], 3)
+                # df["fc-sgp fwhm (pix)"] = np.round(df["fc-sgp fwhm (pix)"], 3)
+                # df["rl l1 centroid_err"] = np.round(df["rl l1 centroid_err"], 3)
+                # df["fc-sgp l1 centroid_err"] = np.round(df["fc-sgp l1 centroid_err"], 3)
                 df.to_csv("sgp_rl_compare_metrics.csv")
             sys.exit()
 
@@ -181,5 +194,5 @@ if __name__ == "__main__":
         df.columns = [
             "image", "rl num_iters", "rl exec_time (s)", "fc-sgp num_iters", "fc-sgp exec_time (s)", "rl fwhm (pix)", "fc-sgp fwhm (pix)", "rl l1 centroid_err", "fc-sgp l1 centroid_err"
         ]
-        print(df)
+        df = np.round(df, decimals=3)
         df.to_csv("sgp_rl_compare_metrics.csv")
