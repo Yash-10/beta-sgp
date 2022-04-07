@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 
 # import pandas as pd
 
-from itertools import repeat
 from timeit import default_timer as timer
 from joblib import Parallel, delayed
 
@@ -14,10 +13,15 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.convolution import Gaussian2DKernel
 from astropy.nddata import Cutout2D
-from astropy.stats import gaussian_fwhm_to_sigma
+from astropy.stats import gaussian_fwhm_to_sigma, sigma_clip
+
+from photutils.background import MedianBackground
+from photutils.segmentation import make_source_mask
 
 from reproject.mosaicking import reproject_and_coadd
 from reproject import reproject_exact
+
+from sklearn.preprocessing import KernelCenterer
 
 from sep import extract, Background
 from sgp import sgp, DEFAULT_PARAMS, calculate_flux
@@ -78,10 +82,11 @@ def decide_star_cutout_size(data, bkg, subdiv_number, nsigma=2.):
     y_extent = max(i) - min(i)
     x_extent = max(j) - min(j)
     approx_size = max(x_extent, y_extent)
-    if subdiv_number[0] in [2, 3] and subdiv_number[1] in [2, 3]:  # Towards the center of cluster.
-        _offset = 1
-    else:
-        _offset = 3
+    _offset = 0
+    # if subdiv_number[0] in [2, 3] and subdiv_number[1] in [2, 3]:  # Towards the center of cluster.
+    #     _offset = 0
+    # else:
+    #     _offset = 0
 
     # # Calculate flux
     # # data must be background-subtracted.
@@ -92,7 +97,7 @@ def decide_star_cutout_size(data, bkg, subdiv_number, nsigma=2.):
     #     data, objects['x'], objects['y'], approx_size, segmap=segmap, err=bkg.globalrms, gain=1.22
     # )
 
-    return max(x_extent, y_extent) + _offset, mask, _offset  # Give 2 pixel offset.
+    return max(x_extent, y_extent) + _offset, mask, _offset  # Give pixel offset, if needed.
 
 def apply_mask(array, data, size=40):
     """
@@ -112,8 +117,20 @@ def apply_mask(array, data, size=40):
             (y > hsize) & (y < (data.shape[0] - 1 - hsize)))
     return array[mask]
 
+def create_circular_mask(h, w, center=None, radius=None):
+    if center is None: # use the middle of the image
+        center = (int(w/2), int(h/2))
+    if radius is None: # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w-center[0], h-center[1])
+
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0])**2 + (Y-center[1])**2)
+
+    mask = dist_from_center <= radius
+    return mask
+
 @memory.cache
-def do_on_ys(image, ix, iy):
+def do_on_ys(image, ix, iy, psf):
     for iy in range(1, 5):
         _base_name = '_'.join((image.split('.')[0] + 'r', str(ix), str(iy)))
         cut_image = '.'.join((_base_name, 'fits'))
@@ -152,9 +169,19 @@ def do_on_ys(image, ix, iy):
                 continue
 
             # Interpolate to match shape of recon_img.
-            interpolated_bkg = cv2.resize(bkg.back(), dsize=(size, size), interpolation=cv2.INTER_CUBIC)
+            # interpolated_bkg = cv2.resize(bkg.back(), dsize=(size, size), interpolation=cv2.INTER_CUBIC)
 
             cutout = Cutout2D(data, position=(xc, yc), size=size, mode='partial', fill_value=bkg.globalback)
+            circ_mask = create_circular_mask(size, size, center=None, radius=size/2)
+            circ_mask = np.logical_not(circ_mask)
+            circ_mask = circ_mask.astype(int, copy=False)
+            dd = np.multiply(circ_mask, cutout.data)
+
+            fig, ax = plt.subplots(1,3)
+            ax[0].imshow(cutout.data)
+            ax[1].imshow(circ_mask)
+            ax[2].imshow(dd)
+            plt.show()
 
             ground_truth_star_stamp_name = '_'.join((_best_base_name, str(ix), str(iy))) + '.fits'
             ground_truth_star_stamp = fits.getdata(ground_truth_star_stamp_name)
@@ -167,6 +194,12 @@ def do_on_ys(image, ix, iy):
             if np.any(cutout.data > 1e10):
                 continue
 
+            # fig, ax = plt.subplots(1,2)
+            # ax[0].imshow(cutout.data)
+            # clipped_cutout = sigma_clip(cutout.data, sigma_lower=1.8, sigma_upper=1.8, maxiters=20)
+            # ax[1].imshow(clipped_cutout)
+            # plt.show()
+
             max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
             try:
                 recon_img, rel_klds, rel_recon_errors, num_iters, extract_coord, execution_time, best_section = sgp(
@@ -178,16 +211,39 @@ def do_on_ys(image, ix, iy):
             except ValueError:
                 continue
 
-            recon_bkg = Background(recon_img, bw=8, bh=8, fw=3, fh=3)  # 8 = 40 / 5
-            recon_bkg.subfrom(recon_img)
-            recon_img += interpolated_bkg
+            recon_bkg = MedianBackground().calc_background(recon_img)
+            # recon_centroid = centroid_2dg(recon_img-recon_bkg)
+            recon_star_mask = make_source_mask(recon_img, nsigma=nsigma, npixels=4, dilate_size=1, sigclip_sigma=nsigma, sigclip_iters=15)
+            recon_star_mask = np.logical_not(recon_star_mask)
+            out = np.bitwise_and(~recon_star_mask, ~circ_mask)
+            recon_star_mask = recon_star_mask.astype(int, copy=False)
 
-            flux_after = calculate_flux(recon_img, interpolated_bkg, offset, size=size)
+            # out = np.nonzero((recon_star_mask == 0) & (circ_mask == 0))
+
+            fig, ax = plt.subplots(1,3)
+            ax[0].imshow(recon_star_mask)
+            ax[1].imshow(circ_mask)
+            ax[2].imshow(out)
+            plt.show()
+
+            fig, ax = plt.subplots(1,3)
+            ax[0].imshow(cutout.data)
+
+            cutout.data *= out
+            # cutout.data[cutout.data==0.] = bkg.globalback
+            cutout.data += bkg.globalback
+
+            bkg_after = MedianBackground().calc_background(recon_img)
+            flux_after = calculate_flux(
+                recon_img, bkg_after, offset, size=size
+            )
 
             print(f'Flux before: {flux_before}')
             print(f'Flux after: {flux_after}')
 
-            cutout.data[...] = recon_img  # Trick to modify `cutout.data` inplace.
+            ax[1].imshow(cutout.data)
+            ax[2].imshow(recon_img)
+            plt.show()
 
         restored_cutout_filename = '_'.join(('restored', cut_image))
         fits.writeto(restored_cutout_filename, data, overwrite=True)
@@ -204,14 +260,20 @@ if __name__ == "__main__":
     count = 0
 
     start = timer()
-    for image in sorted(defect_images)[15:30]:
-        psfs = glob.glob(f"_PSF_BINS/psf_{image.split('.')[0]}_*_*.fits")
-        psf = np.mean([fits.getdata(p) for p in psfs], axis=0)
+    for image in sorted(defect_images)[1:2]:
+        psfname = f"/home/yash/DIAPL/work/psf_{image.split('.')[0]}_img.fits"
+        psf = fits.getdata(psfname)
+
+        # Center the PSF matrix
+        psf = KernelCenterer().fit_transform(psf)
+        psf = np.abs(psf)
 
         if image not in defect_images:
             continue
         for ix in range(1, 5):
-            Parallel(n_jobs=2, verbose=10)(delayed(do_on_ys)(image, ix, iy) for iy in range(1, 5))
+            for iy in range(1, 5):
+                do_on_ys(image, ix, iy, psf)
+                # Parallel(n_jobs=2, verbose=10)(delayed(do_on_ys)(image, ix, iy, psf) for iy in range(1, 5))
 
         # Mosaick
         if mosaick:
