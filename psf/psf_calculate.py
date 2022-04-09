@@ -1,4 +1,5 @@
 import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -97,13 +98,13 @@ class PSF:
 
         """
         pix_locs = []
-        for i in range(-7, 8):
-            for j in range(-7, 8):
+        for i in range(-15, 15):
+            for j in range(-15, 15):
                 pix_locs.append((i, j))
         psf_mat = np.zeros(len(pix_locs)) # eg: 15*15 is the PSF matrix size to show.
         for i, pix_loc in enumerate(pix_locs):
             psf_mat[i] = self.calc_psf_pix(self.vec_coeffs, *pix_loc)
-        self.psf_mat = psf_mat.reshape(15, 15)
+        self.psf_mat = psf_mat.reshape(30, 30)
 
         return self.psf_mat
 
@@ -167,38 +168,44 @@ if __name__ == "__main__":
     ### PSF bin txt files must be present in the current working directory ###
     mats = []
     titles = []
-    for i, file_ in enumerate(os.listdir("./")):
+    for i, file_ in enumerate(glob.glob("psf*.txt")):
         if file_.endswith(".txt"):
+            print(file_)
             psf = PSF(file_)
-            fits.writeto(file_.split(".")[0]+"_img.fits", psf.get_psf_mat())
+            try:
+                fits.writeto(file_.split(".")[0]+"_img.fits", psf.get_psf_mat())
+            except:
+                pass
+            mat = psf.get_psf_mat()
+            print(mat[mat<0])
             mats.append(psf.get_psf_mat())
             titles.append(file_.split(".")[0])
 
-    # print(len(mats))
-    fig, ax = plt.subplots(3, 3, figsize=(5, 5))
+    # # print(len(mats))
+    # fig, ax = plt.subplots(3, 3, figsize=(5, 5))
 
-    fig.tight_layout()
+    # fig.tight_layout()
 
-    ax[0, 0].imshow(mats[0], cmap="gray")
-    ax[0, 0].set_title(titles[0])
-    ax[0, 1].imshow(mats[1], cmap="gray")
-    ax[0, 1].set_title(titles[1])
-    ax[0, 2].imshow(mats[2], cmap="gray")
-    ax[0, 2].set_title(titles[2])
-    ax[1, 0].imshow(mats[3], cmap="gray")
-    ax[1, 0].set_title(titles[3])
-    ax[1, 1].imshow(mats[2], cmap="gray")
-    ax[1, 1].set_title(titles[4])
-    ax[1, 2].imshow(mats[3], cmap="gray")
-    ax[1, 2].set_title(titles[5])
-    ax[2, 0].imshow(mats[3], cmap="gray")
-    ax[2, 0].set_title(titles[6])
-    ax[2, 1].imshow(mats[2], cmap="gray")
-    ax[2, 1].set_title(titles[7])
-    ax[2, 2].imshow(mats[3], cmap="gray")
-    ax[2, 2].set_title(titles[8])
-    plt.show()
+    # ax[0, 0].imshow(mats[0], cmap="gray")
+    # ax[0, 0].set_title(titles[0])
+    # ax[0, 1].imshow(mats[1], cmap="gray")
+    # ax[0, 1].set_title(titles[1])
+    # ax[0, 2].imshow(mats[2], cmap="gray")
+    # ax[0, 2].set_title(titles[2])
+    # ax[1, 0].imshow(mats[3], cmap="gray")
+    # ax[1, 0].set_title(titles[3])
+    # ax[1, 1].imshow(mats[2], cmap="gray")
+    # ax[1, 1].set_title(titles[4])
+    # ax[1, 2].imshow(mats[3], cmap="gray")
+    # ax[1, 2].set_title(titles[5])
+    # ax[2, 0].imshow(mats[3], cmap="gray")
+    # ax[2, 0].set_title(titles[6])
+    # ax[2, 1].imshow(mats[2], cmap="gray")
+    # ax[2, 1].set_title(titles[7])
+    # ax[2, 2].imshow(mats[3], cmap="gray")
+    # ax[2, 2].set_title(titles[8])
+    # plt.show()
 
-    # Example: The image corresponding to this PSF had the worst FWHM estimate from fwhms.bash (~11)
-    plt.imshow(PSF("psf_ccfbvb230022.bin.txt").get_psf_mat(), cmap="gray")
-    plt.show()
+    # # Example: The image corresponding to this PSF had the worst FWHM estimate from fwhms.bash (~11)
+    # plt.imshow(PSF("psfs/psf_ccfbvb230022.bin.txt").get_psf_mat(), cmap="gray")
+    # plt.show()
