@@ -1,6 +1,7 @@
 import glob
 import pandas as pd
 import numpy as np
+import cv2
 import matplotlib.pyplot as plt
 
 from math import floor
@@ -11,7 +12,7 @@ from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
 from astropy.wcs.utils import skycoord_to_pixel
 from photutils.background import MedianBackground
-from photutils.centroids import centroid_2dg
+from photutils.segmentation import make_source_mask
 
 from sklearn.preprocessing import KernelCenterer
 from sep import extract, Background
@@ -64,7 +65,7 @@ def decide_star_cutout_size(data, bkg, nsigma=2.):
     y_extent = max(i) - min(i)
     x_extent = max(j) - min(j)
     approx_size = max(x_extent, y_extent)
-    _offset = 7
+    _offset = 15
 
     return max(x_extent, y_extent) + _offset, mask, _offset  # Give pixel offset, if needed.
 
@@ -102,12 +103,12 @@ if __name__ == "__main__":
     psf = KernelCenterer().fit_transform(psf)
     psf = np.abs(psf)
 
-    check_star_cutout = Cutout2D(image, coord, wcs=w, size=45, copy=True)  # 40 is a safe size choice.
+    check_star_cutout = Cutout2D(image, coord, wcs=w, size=100, copy=True)  # 40 is a safe size choice.
     # Estimate background on this check stamp
     d = np.ascontiguousarray(check_star_cutout.data)
     d = d.byteswap().newbyteorder()
     del check_star_cutout
-    bkg = Background(d, bw=8, bh=8, fw=3, fh=3)  # 8 = 40 / 5
+    bkg = Background(d, bw=4, bh=4, fw=3, fh=3)  # 4 = 40 / 10
     bkg.subfrom(d)
 
     size, other_mask, offset = decide_star_cutout_size(d, bkg, nsigma=2.)
@@ -121,15 +122,18 @@ if __name__ == "__main__":
     xbest, ybest = skycoord_to_pixel(coord, wcs=w_best)
 
     flux_before = calculate_flux(
-        stamp.data, bkg.globalback, 0, size=size
+        stamp.data, bkg.globalback, offset, size=size
     )
+    osegmap = make_source_mask(stamp.data, nsigma=2., npixels=4)
+    osegmap = ~osegmap
+    removed_orig_source = osegmap * stamp.data
 
-    circ_mask = create_circular_mask(size, size, center=None, radius=size/2)
-    circ_mask = ~circ_mask
-    circ_mask = circ_mask.astype(int, copy=False)
-    dd = np.multiply(circ_mask, stamp.data)
-    plt.imshow(dd)
-    plt.show()
+    # circ_mask = create_circular_mask(size, size, center=None, radius=size/2)
+    # circ_mask = ~circ_mask
+    # circ_mask = circ_mask.astype(int, copy=False)
+    # dd = np.multiply(circ_mask, stamp.data)
+    # plt.imshow(dd)
+    # plt.show()
 
     # params = validate_single(stamp.data, psf, bkg.globalback, x, y, search_type='fine', flux_criteria=1, size=size, best_cutout=best_cutout, xbest=xbest, ybest=ybest)
     params = None
@@ -150,29 +154,18 @@ if __name__ == "__main__":
     )
     bkg_after = MedianBackground().calc_background(recon_img)
     flux_after = calculate_flux(
-        recon_img, bkg_after, 0, size=size
+        recon_img, bkg_after, offset, size=size
     )
 
-    reconx, recony = centroid_2dg(recon_img-bkg_after)
-    rsize, rother_mask, roffset = decide_star_cutout_size(recon_img, bkg_after, nsigma=2.)
-    print(f"Approx stamp size around restored star: {rsize}")
-    recon_circ_mask = create_circular_mask(size, size, center=(reconx, recony), radius=(rsize-offset)/2)
-    recon_circ_mask = recon_circ_mask.astype(int, copy=False)
-    recon_dd = np.multiply(recon_circ_mask, recon_img)
-
-    plt.imshow(dd)
-    plt.title("dd")
+    rsegmap = make_source_mask(recon_img, nsigma=2., npixels=4)
+    recon_source = rsegmap * recon_img
+    rsegmap = ~rsegmap
+    fig, ax = plt.subplots(1, 4)
+    ax[0].imshow(recon_img)
+    ax[1].imshow(rsegmap.astype(float))
+    ax[2].imshow(removed_orig_source * rsegmap)
+    ax[3].imshow(removed_orig_source * rsegmap+recon_source)
     plt.show()
-    plt.imshow(recon_dd)
-    plt.show()
-    plt.imshow(dd+recon_dd)
-    plt.show()
-
-    show = recon_dd+dd
-    show[show==0.] = bkg.globalback
-
-    # recon_img -= bkg_after
-    # recon_img += bkg.globalback
 
     print(f"Flux before: {flux_before}")
     print(f"Flux after: {flux_after}")
@@ -186,7 +179,21 @@ if __name__ == "__main__":
     ax[2].set_title(f"Restored stamp - Flux: {flux_after}")
     plt.show()
 
-    stamp.data[...] = show
+    ans = removed_orig_source+recon_source
+    ans[ans==0.0] = bkg.globalback
+    ans[ans<150] = bkg.globalback
+    # TODO: Should I also add bkg on top of recon source ? Does that help preserve flux better? -- experiment...
+    plt.imshow(ans)
+    plt.title("ANS")
+    plt.show()
+
+    bkg_after = MedianBackground().calc_background(ans)
+    flux_after = calculate_flux(
+        ans, bkg_after, offset, size=size
+    )
+    print(f"Flux after (final): {flux_after}")
+
+    stamp.data[...] = ans
     fits.writeto("restored_cal_ccfbvc170120.fits", image, header=hdul[0].header, overwrite=True)
 
     # df = pd.read_csv('variable_stars.txt', header=None, sep=' ')
