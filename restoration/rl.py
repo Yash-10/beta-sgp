@@ -9,15 +9,15 @@ from numpy import unravel_index
 
 import matplotlib.pyplot as plt
 from astropy.io import fits
-from astropy.convolution import convolve  # Differs from `scipy.signal.convolve` by handling NaN values differently.
+from astropy.convolution import convolve, convolve_fft  # Differs from `scipy.signal.convolve` by handling NaN values differently.
 from astropy.nddata import Cutout2D
+from astropy.stats import sigma_clipped_stats
 
-from sep import extract, Background
-from sgp import calculate_flux, DEFAULT_PARAMS
+from sgp import source_info
+from sklearn.preprocessing import KernelCenterer
 
-from photutils.background import (
-    MeanBackground, MedianBackground
-)
+from photutils.segmentation import detect_threshold, detect_sources, make_source_mask, SegmentationImage
+
 from photutils.centroids import centroid_2dg
 from radprof_ellipticity import radial_profile, calculate_ellipticity_fwhm
 
@@ -52,6 +52,7 @@ def rl(
     bkg_estimate: Background estimate.
 
     """
+    # eps = 1e-12  # Use eps to prevent zero division - taken from scikit-image `richardson_lucy` source code.
     if best_stamp is not None:
         extract_coord = None
     rel_recon_errors = []  # List to store relative construction errors.
@@ -64,8 +65,8 @@ def rl(
     start = timer()
     image = image.astype(float, copy=False)
     psf = psf.astype(float, copy=False)
-    # deconv_img = np.full(image.shape, 0.5, dtype=image.dtype)
-    deconv_img = image
+    # deconv_img = image   # ==> This is another initialization option but does not work well.
+    deconv_img = np.full(image.shape, 0.5, dtype=float)
 
     prev_rel_err = np.Inf  # Initialize previous relative reconstruction error.
     prev_recon_img = None  # Store previous reconstructed image. Needed only for `stop_criterion=2`
@@ -76,9 +77,9 @@ def rl(
         prev_recon_img = deconv_img
 
         # boundary="extend" and normalize_kernel=True for astropy convolution.
-        conv = convolve(deconv_img, psf, normalize_kernel=normalize_kernel) + bkg_estimate
+        conv = convolve_fft(deconv_img, psf, normalize_kernel=normalize_kernel) + bkg_estimate
         relative = image / conv  # Handle near-zero values?
-        deconv_img *= convolve(relative, np.flip(psf), normalize_kernel=normalize_kernel)
+        deconv_img *= convolve_fft(relative, np.flip(psf), normalize_kernel=normalize_kernel)
 
         rel_err = np.linalg.norm(deconv_img.ravel() - best_stamp.ravel()) / np.linalg.norm(best_stamp.ravel())
         rel_recon_errors.append(rel_err)
@@ -137,9 +138,9 @@ def rl_mul_relax(image, psf, bkg_estimate, max_iter=1500, alpha=1.5,
         prev_recon_img = deconv_img
 
         # boundary="extend" and normalize_kernel=True for astropy convolution.
-        conv = convolve(deconv_img, psf, normalize_kernel=normalize_kernel) + bkg_estimate
+        conv = convolve_fft(deconv_img, psf, normalize_kernel=normalize_kernel) + bkg_estimate
         relative = image / conv  # Handle near-zero values?
-        deconv_img *= convolve(relative, np.flip(psf), normalize_kernel=normalize_kernel) ** alpha
+        deconv_img *= convolve_fft(relative, np.flip(psf), normalize_kernel=normalize_kernel) ** alpha
 
         rel_err = np.linalg.norm(deconv_img.ravel() - best_stamp.ravel()) / np.linalg.norm(best_stamp.ravel())
         rel_recon_errors.append(rel_err)
@@ -160,10 +161,10 @@ def rl_mul_relax(image, psf, bkg_estimate, max_iter=1500, alpha=1.5,
     return deconv_img, rel_recon_errors[:-1], iter_-1, end-start, extract_coord  # Don't select the last error since it went up and termination occured before that.
 
 if __name__ == "__main__":
-    with open("candidate_defect_images.txt", "r") as f:
+    with open('defect_images.txt') as f:
         defect_images = f.read().splitlines()
-    
-    os.mkdir("RL_original_images")
+
+    os.mkdir("RL_reconstructed_images")
 
     plot = False
     verbose = True
@@ -171,187 +172,174 @@ if __name__ == "__main__":
     final_params_list = []
     success = 0
     failure = 0
-    size = 25
+    size = 30
+    approx_size = 30
     offset = None
     original_radprofs = []
     count = 0
-    MEDIAN_FLUX = 61169.92578125  # Calculate using all stamps from the dataset.
+    MEDIAN_FLUX = 61169.92578125  # Calculate using all stamps from the sample. TODO: Change this value.
 
-    _best_base_name = 'ccfbtf170075' + 'r'
-    best_cut_image = '.'.join((_best_base_name, 'fits'))
-    best_cut_coord_list = '.'.join((_best_base_name, 'coo'))
+    # _best_base_name = 'ccfbtf170075' + 'r'
+    # best_cut_image = '.'.join((_best_base_name, 'fits'))
+    # best_cut_coord_list = '.'.join((_best_base_name, 'coo'))
 
-    # Calculate mean PSF (mean of PSFs over a single frame) as a prior for the RL method.
-    psfs = sorted(glob.glob("/home/yash/DIAPL/work/_PSF_BINS/psf_cc*.fits"))
-    mean_psfs = []
-    for i in range(0, len(psfs), 4):
-        data_psfs = [fits.getdata(psfs[n]) for n in range(i, i+4)]
-        mean_psf = np.mean(data_psfs, axis=0)
-        mean_psfs.append(mean_psf)
+    df = pd.read_csv('coords_to_use.csv')
 
-    start = timer()
-    for image, psf in zip(sorted(defect_images), mean_psfs):
-        if image not in defect_images:
+    # os.mkdir("COMPARE_IMAGES/")
+
+    for image in sorted(defect_images):
+        dfnames = df['name'].tolist()
+        dfnames = [fg.strip() for fg in dfnames]
+        if image not in dfnames:
             continue
-        for ix, iy in zip([1, 2], [2, 1]):
-            _base_name = '_'.join((image.split('.')[0] + 'r', str(ix), str(iy)))
-            cut_image = '.'.join((_base_name, 'fits'))
-            final_name = '_'.join((_base_name, str(ix), str(iy)))   # Need this just to match naming convention.
-            cut_coord_list = '.'.join((final_name, 'coo'))
 
-            try:  # For some reason, some subdivisions cannot be extracted (needs investigation).
-                data = fits.getdata(cut_image)
-            except:  # If "r" suffixed images cannot be extracted, used the non-resampled version.
-                _base_name = '_'.join((image.split('.')[0], str(ix), str(iy)))
-                cut_image = '.'.join((_base_name, 'fits'))
-                data = fits.getdata(cut_image)
-                cut_coord_list = '.'.join((_base_name, 'coo'))
+        data = fits.getdata(image.split('.')[0] + 'r' + '1_2.fits')
 
-            try:
-                stars = np.loadtxt(cut_coord_list, skiprows=3, usecols=[0, 1])
-            except OSError:
-                continue
-            stars = apply_mask(stars, data, size=25)  # Exclude stars very close to the edge.
+        stars = df[df['name'] == image][[' x', ' y']].to_numpy()
+        for xc, yc in stars:
+            print(f'Coordindates: x: {xc}, y: {yc}')
+            _check_cutout = Cutout2D(data, (xc, yc), size=60, mode='partial', fill_value=0.0, copy=True).data
+            cutout = Cutout2D(data, (xc, yc), size=size, mode='partial', fill_value=0.0).data
 
-            if stars.size == 2:
-                stars = np.expand_dims(stars, axis=0)
-            for xc, yc in stars:
-                check_star_cutout = Cutout2D(data, position=(xc, yc), size=40)  # 40 is a safe size choice.
-                # Estimate background on this check stamp
-                d = np.ascontiguousarray(check_star_cutout.data)
-                d = d.byteswap().newbyteorder()
-                del check_star_cutout
-                bkg = Background(d, bw=8, bh=8, fw=3, fh=3)  # 8 = 40 / 5
-                bkg.subfrom(d)
+            # Estimate background on check stamp.
+            _mask = make_source_mask(_check_cutout, nsigma=2, npixels=5, dilate_size=5)
+            _mean, _median, _std = sigma_clipped_stats(_check_cutout, sigma=3.0, mask=_mask)
+            bkg = _median
 
-                cutout = Cutout2D(data, position=(xc, yc), size=size)
+            mask = make_source_mask(cutout, nsigma=2, npixels=5, dilate_size=5)
 
-                ground_truth_star_stamp_name = '_'.join((_best_base_name, str(ix), str(iy))) + '.fits'
-                ground_truth_star_stamp = fits.getdata(ground_truth_star_stamp_name)
-                best_cut_image = Cutout2D(ground_truth_star_stamp, (xc, yc), size=size).data
+            prop_table_before = source_info(cutout, bkg, mask, approx_size).to_table()
+            flux_before = prop_table_before['segment_flux'].value[0]
+            flux_before_err = prop_table_before['segment_fluxerr'].value[0]
+            psf = fits.getdata(f'../work/psf{image.split(".")[0]}_{str(1)}_{str(2)}_img.fits')
+            # Center the PSF matrix
+            psf = KernelCenterer().fit_transform(psf)
+            psf = np.abs(psf)
 
-                flux_before = calculate_flux(
-                    cutout.data, bkg.globalback, offset, size=size
+            ref_imagename = f'cal_ccfbtf170075r{str(1)}_{str(2)}.fits'
+            best_cutout = Cutout2D(fits.getdata(ref_imagename), (xc, yc), size=size, mode='partial', fill_value=0.0).data
+
+            recon_img, rel_recon_errors, num_iters, execution_time, extract_coord = rl(
+                cutout, psf, bkg, max_iter=10, normalize_kernel=True,
+                best_stamp=best_cutout, current_xy=(xc, yc)
+            )
+            fits.writeto(f"RL_reconstructed_images/{image}_{xc}_{yc}_RL_recon_{num_iters}.fits", recon_img)
+
+            mask_after = make_source_mask(recon_img, nsigma=2, npixels=5, dilate_size=5)
+            mean_after, median_after, std_after = sigma_clipped_stats(recon_img, sigma=3.0, mask=mask_after)
+            bkg_after = median_after
+
+            prop_table_after = source_info(recon_img, bkg_after, mask_after, approx_size).to_table()
+            flux_after = prop_table_after['segment_flux'].value[0]
+            flux_after_err = prop_table_after['segment_fluxerr'].value[0]
+
+            print(f"Flux before: {flux_before} +- {flux_before_err}")
+            print(f"Flux after: {flux_after} +- {flux_after_err}")
+
+            # We calculate ellipticity and fwhm from the `radprof_ellipticity` module.
+            before_ecc, before_fwhm = calculate_ellipticity_fwhm(cutout, use_moments=True)
+            after_ecc, after_fwhm = calculate_ellipticity_fwhm(recon_img, use_moments=True)
+
+            before_center = centroid_2dg(cutout-bkg)
+            after_center = centroid_2dg(recon_img-bkg_after)
+            centroid_err = (before_center[0]-after_center[0], before_center[1]-after_center[1])
+            l2_centroid_err = np.linalg.norm(before_center-after_center)
+            l1_centroid_err = abs(before_center[0]-after_center[0]) + abs(before_center[1]-after_center[1])
+
+            if verbose:
+                print("\n\n")
+                print(f"No. of iterations: {num_iters}")
+                print(f"Execution time: {execution_time}s")
+                print(f"Flux (before): {flux_before}")
+                print(f"Flux (after): {flux_after}")
+                print(f"Ideal stamp for relative reconstruction error at x, y = {extract_coord}")
+                print(f"Centroid error (before-after) = {centroid_err}")
+                print("\n\n")
+
+            if plot:
+                fig, ax = plt.subplots(2, 2)
+                fig.suptitle("RL")
+
+                ax[0, 0].imshow(cutout, origin="lower")
+                ax[0, 0].set_title("Original", loc="center")
+                ax[0, 1].imshow(recon_img.reshape(size, size), origin="lower")
+                ax[0, 1].set_title("Reconstructed", loc="center")
+                ax[1, 0].set_xticks(range(0, num_iters))
+                ax[1, 0].set_title("Relative KL divergence", loc="center")
+                ax[1, 1].plot(rel_recon_errors[:-1])
+                ax[1, 1].set_xticks(range(0, num_iters))
+                ax[1, 1].set_title("Relative reconstruction error", loc="center")
+                ax[1, 0].set_xlabel("Iteration no.")
+                ax[1, 1].set_xlabel("Iteration no.")
+
+                # From https://stackoverflow.com/questions/12998430/remove-xticks-in-a-matplotlib-plot
+                ax[0, 0].tick_params(
+                    axis='x',          # changes apply to the x-axis
+                    which='both',      # both major and minor ticks are affected
+                    bottom=False,      # ticks along the bottom edge are off
+                    top=False,         # ticks along the top edge are off
+                    labelbottom=False
+                ) # labels along the bottom edge are off
+                ax[0, 1].tick_params(
+                    axis='x',          # changes apply to the x-axis
+                    which='both',      # both major and minor ticks are affected
+                    bottom=False,      # ticks along the bottom edge are off
+                    top=False,         # ticks along the top edge are off
+                    labelbottom=False
                 )
+                plt.show()
 
-                if np.any(cutout.data > 1e10):
-                    continue
+            ## Success/Failure based on flux criterion ##
+            flux_thresh = 0.05 * MEDIAN_FLUX
+            if flux_after < flux_before + flux_thresh and flux_after > flux_before - flux_thresh:
+                success += 1
+                flag = 1  # Flag to denote if reconstruction is under the flux limit.
+            else:
+                failure += 1
+                flag = 0
 
-                fits.writeto(f"RL_original_images/{image}_original_{xc}_{yc}.fits", cutout.data)
+            ######################
+            ### Radial Profile ###
+            ######################
 
-                max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
-                try:
-                    recon_img, rel_recon_errors, num_iters, execution_time, extract_coord = rl(
-                        cutout.data, psf, bkg.globalback, max_iter=1500, normalize_kernel=True,
-                        best_stamp=best_cut_image, current_xy=(xc, yc)
-                    )
-                except ValueError:
-                    continue
+            orig_center = centroid_2dg(cutout)
+            original_radprof = radial_profile(cutout, orig_center)[:17]
+            original_radprofs.append(original_radprof)
 
-                # TODO: Revisit this: Calculating bkg on recon stamp seems difficult.
-                bkg_after = MedianBackground().calc_background(recon_img)
-                flux_after = calculate_flux(
-                    recon_img, bkg_after, offset, size=size
-                )
+            print(f"Success till now: {success}")
+            print(f"Failure till now: {failure}")
 
-                # We calculate ellipticity and fwhm from the `radprof_ellipticity` module.
-                before_ecc, before_fwhm = calculate_ellipticity_fwhm(cutout.data, use_moments=True)
-                after_ecc, after_fwhm = calculate_ellipticity_fwhm(recon_img, use_moments=True)
+            execution_time = np.round(execution_time, 3)
+            centroid_err = np.round(centroid_err, 3)
+            l1_centroid_err = np.round(l1_centroid_err, 3)
+            l2_centroid_err = np.round(l2_centroid_err, 3)
 
-                before_center = centroid_2dg(cutout.data)
-                after_center = centroid_2dg(recon_img)
-                centroid_err = (before_center[0]-after_center[0], before_center[1]-after_center[1])
-                l2_centroid_err = np.linalg.norm(before_center-after_center)
+            # Update final needed parameters list.
+            star_coord = (xc, yc)
+            final_params_list.append(
+                [image, num_iters, execution_time, star_coord, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), centroid_err, l1_centroid_err, l2_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
+            )
+            count += 1
 
-                if verbose:
-                    print("\n\n")
-                    print(f"No. of iterations: {num_iters}")
-                    print(f"Execution time: {execution_time}s")
-                    print(f"Flux (before): {flux_before}")
-                    print(f"Flux (after): {flux_after}")
-                    print(f"Ideal stamp for relative reconstruction error from {ground_truth_star_stamp_name} at x, y = {extract_coord}")
-                    print(f"Centroid error (before-after) = {centroid_err}")
-                    print("\n\n")
+            # fits.writeto(f"RL_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
 
-                if plot:
-                    fig, ax = plt.subplots(2, 2)
-                    fig.suptitle("RL")
+    if count == 30:
+        print(f"Success count: {success}")
+        print(f"Failure count: {failure}")
 
-                    ax[0, 0].imshow(cutout.data, origin="lower")
-                    ax[0, 0].set_title("Original", loc="center")
-                    ax[0, 1].imshow(recon_img.reshape(size, size), origin="lower")
-                    ax[0, 1].set_title("Reconstructed", loc="center")
-                    # ax[1, 0].plot(rel_klds[:-1])  # Don't select the last value since from that value, the error rises - for plotting reasons.
-                    ax[1, 0].set_xticks(range(0, num_iters))
-                    ax[1, 0].set_title("Relative KL divergence", loc="center")
-                    ax[1, 1].plot(rel_recon_errors[:-1])
-                    ax[1, 1].set_xticks(range(0, num_iters))
-                    ax[1, 1].set_title("Relative reconstruction error", loc="center")
-                    ax[1, 0].set_xlabel("Iteration no.")
-                    ax[1, 1].set_xlabel("Iteration no.")
-
-                    # From https://stackoverflow.com/questions/12998430/remove-xticks-in-a-matplotlib-plot
-                    ax[0, 0].tick_params(
-                        axis='x',          # changes apply to the x-axis
-                        which='both',      # both major and minor ticks are affected
-                        bottom=False,      # ticks along the bottom edge are off
-                        top=False,         # ticks along the top edge are off
-                        labelbottom=False
-                    ) # labels along the bottom edge are off
-                    ax[0, 1].tick_params(
-                        axis='x',          # changes apply to the x-axis
-                        which='both',      # both major and minor ticks are affected
-                        bottom=False,      # ticks along the bottom edge are off
-                        top=False,         # ticks along the top edge are off
-                        labelbottom=False
-                    )
-                    plt.show()
-
-                ## Success/Failure based on flux criterion ##
-                flux_thresh = 0.05 * MEDIAN_FLUX
-                if flux_after < flux_before + flux_thresh and flux_after > flux_before - flux_thresh:
-                    success += 1
-                    flag = 1  # Flag to denote if reconstruction is under the flux limit.
-                else:
-                    failure += 1
-                    flag = 0
-
-                ######################
-                ### Radial Profile ###
-                ######################
-
-                orig_center = centroid_2dg(cutout.data)
-                original_radprof = radial_profile(cutout.data, orig_center)[:17]
-                original_radprofs.append(original_radprof)
-
-                print(f"Success till now: {success}")
-                print(f"Failure till now: {failure}")
-
-                # Update final needed parameters list.
-                star_coord = (xc, yc)
-                final_params_list.append(
-                    [image, num_iters, execution_time, DEFAULT_PARAMS, star_coord, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), centroid_err, l2_centroid_err, before_ecc, after_ecc, before_fwhm, after_fwhm, flag]
-                )
-                count += 1
-                break
-            break
-
-        if count == 30:
-            print(f"Success count: {success}")
-            print(f"Failure count: {failure}")
-
-            if save:
-                np.save("original_radprofs.npy", np.array(original_radprofs))
-                final_params = np.array(final_params_list)
-                df = pd.DataFrame(final_params)
-                df.to_csv("rl_params_and_metrics.csv")
-            sys.exit()
+        if save:
+            np.save("rl_original_radprofs.npy", np.array(original_radprofs))
+            final_params = np.array(final_params_list)
+            df = pd.DataFrame(final_params)
+            df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_recon_errors", "flux_before", "flux_after", "centroid_err", "l1_centroid_err", "l2_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
+            df.to_csv("rl_params_and_metrics.csv")
+        sys.exit()
 
     print(f"Success count: {success}")
     print(f"Failure count: {failure}")
 
     if save:
-        np.save("original_radprofs.npy", np.array(original_radprofs))
+        np.save("rl_original_radprofs.npy", np.array(original_radprofs))
         final_params = np.array(final_params_list)
         df = pd.DataFrame(final_params)
         df.to_csv("rl_params_and_metrics.csv")

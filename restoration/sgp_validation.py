@@ -67,7 +67,7 @@ def setup(mode='test'):
 
         return best_sci_img, best_coord_file, best_psf
 
-def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0, size=25, mode='test'):
+def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=1, size=25, mode='test', do_setup=False, best_cutout=None, xbest=None, ybest=None):
     """
     search_type: Whether to do an extensive grid search over SGP parameters or a coarser search,
     else use 'fine', defaults to 'coarse'.
@@ -88,9 +88,10 @@ def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0,
 
     """
     MEDIAN_FLUX = 61169.92578125
-    from sgp import sgp, calculate_flux
+    from sgp import sgp, calculate_flux, calculate_bkg
 
-    best_sci_img, best_coord_file, best_psf = setup(mode=mode)  # Hack.
+    if do_setup:
+        best_sci_img, best_coord_file, best_psf = setup(mode=mode)  # Hack.
 
     optimal_params_set = []
     optimal_projs = -1
@@ -116,15 +117,15 @@ def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0,
     elif search_type == 'fine':
         # 1. Finer search (computationally intensive)
         param_grid = {
-            "max_projs": [100, 500, 700, 900, 1000, 1500, 3000, 5000, 10000, 50000],
-            "gamma": [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6],
-            "beta": [0.4],
+            "max_projs": [100, 500, 700, 900, 1500, 3000],
+            "gamma": [1e-3, 1e-5, 1e-7],
+            "beta": [0.1, 0.5],
             "alpha_min": [1e-6, 1e-4, 1e-2, 1e-1],
             "alpha_max": [1e6, 1e4, 1e2, 1e1],
-            "alpha": [1e-2, 1e-1, 1e0, 1.3, 1e1, 1e2, 1e3],
+            "alpha": [1e-6, 1e-4, 1e-2, 1e0, 1e2, 1e4, 1e6],
             "M_alpha": [3],
             "tau": [0.5],
-            "M": [1, 3, 7]
+            "M": [1, 3]
         }
 
     keys, values = zip(*param_grid.items())
@@ -137,42 +138,46 @@ def validate_single(data, psf, bkg, x, y, search_type='coarse', flux_criteria=0,
         # do not want to terminate due to one bad choice during validation.
         try:
             recon_img, rel_klds, rel_recon_errors, num_iters, extract_coord, execution_time, best_section = sgp(
-                data, psf, bkg, init_recon=2, proj_type=1, stop_criterion=2, MAXIT=150,
-                gamma=sgp_hyperparameters["gamma"], beta=sgp_hyperparameters["beta"], alpha=sgp_hyperparameters["alpha"],
-                alpha_min=sgp_hyperparameters["alpha_min"], alpha_max=sgp_hyperparameters["alpha_max"],
-                M_alpha=sgp_hyperparameters["M_alpha"], tau=sgp_hyperparameters["tau"], M=sgp_hyperparameters["M"],
-                max_projs=sgp_hyperparameters["max_projs"], size=size, best_img=best_sci_img, best_coord=best_coord_file, current_xy=(x, y),
-                verbose=True, clip_X_upp_bound=False, save=False
+                data, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
+                alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=None, best_coord=(xbest, ybest), best_cutout=best_cutout,
+                max_projs=max_projs, size=size, init_recon=2, stop_criterion=2, current_xy=(x, y), save=False,
+                filename=None, verbose=True, clip_X_upp_bound=False, diapl=False, to_search_for_best_stamp=False, offset=0
             )
         except TypeError:
            print("Error in validation")
            continue
 
-        flux_before = calculate_flux(data, size=size)
+        bkg_before = calculate_bkg(data)
+        flux_before = calculate_flux(
+            data, bkg_before, None, size=size
+        )
         try:
-            flux_after = calculate_flux(recon_img, size=size)
+            bkg_after = calculate_bkg(recon_img)
+            flux_after = calculate_flux(
+                recon_img, bkg_after, None, size=size
+            )
         except TypeError:
             continue
 
         flux_diff = abs(flux_after - flux_before)
 
         if flux_criteria == 1:
-            flux_thresh = 0.1 * flux_before
+            flux_thresh = 0.01 * flux_before
         else:
             flux_thresh = 0.01 * MEDIAN_FLUX
 
-        if flux_after < flux_before + flux_thresh and flux_after > flux_before - flux_thresh:
+        if flux_after < flux_before + flux_thresh and flux_before - flux_thresh < flux_after:
             if flux_diff < min_flux_diff:
                 optimal_projs = max_projs
                 min_flux_diff = flux_diff
             else:
-                optimal_projs = 500  # Some arbitrary default value.
+                optimal_projs = 500  # Some default value.
 
             recon_ecc, recon_fwhm = calculate_ellipticity_fwhm(recon_img, use_moments=True)
             data_ecc, data_fwhm = calculate_ellipticity_fwhm(data, use_moments=True)
-            print(rel_recon_errors)
-            least_recon_error_current = rel_recon_errors[-1]  # Second-last error would be the least.
-            if recon_ecc < data_ecc and least_recon_error_current < least_err:
+            least_recon_error_current = rel_recon_errors[-2]  # Second-last error would be the least.
+            # Reason for recon_fwhm > 3 is because we do not want stars to be reconstructed as very small, i.e. point sources.
+            if ((recon_fwhm.value >= 3) and (recon_fwhm.value < data_fwhm.value and recon_ecc.value < data_ecc.value)) and (least_recon_error_current < least_err):
                 best_params = (optimal_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M)
                 least_ellipticity = recon_ecc
                 least_err = least_recon_error_current

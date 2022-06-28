@@ -367,8 +367,6 @@ def sgp(
     # Computations needed only once.
     N = gn.size
     if flux is None:
-        ## calculate_flux is an helper function to calculate flux, but we use a simple flux calculation = sum(gn) - N * bkg - which might not be very accurate.
-        ## Recommended: Input a precomputed flux to SGP instead of passing None.
         flux = np.sum(gn) - N * bkg
         # flux = calculate_flux(gn, bkg, offset, size=size)
     else:  # If flux is already provided, we need to scale it. This option is recommended.
@@ -389,7 +387,7 @@ def sgp(
     ### Setup directory to store reconstructed images ###
     #####################################################
     if save:
-        dirname = "FC_SGP_reconstructed_images/"
+        dirname = "SGP_reconstructed_images/"
         try:
             os.mkdir(dirname)
         except OSError as exc:
@@ -577,7 +575,7 @@ def sgp(
             else:
                 best_section, extract_coord = best_cutout.ravel(), best_coord
 
-            # Note: If we scale `best_section`, the error decrement might look small.
+            # Note: We have not scaled `best_section` so the error decrement might look small.
             rel_err = relative_recon_error(best_section, x, scaling)
 
             if verbose:
@@ -635,7 +633,7 @@ if __name__ == "__main__":
     with open('defect_images.txt') as f:
         defect_images = f.read().splitlines()
 
-    os.mkdir("FC_SGP_original_images")
+    os.mkdir("SGP_original_images")
 
     plot = False
     verbose = True
@@ -709,8 +707,8 @@ if __name__ == "__main__":
                 cutout, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
                 alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=None, best_coord=(xc, yc), best_cutout=best_cutout,
                 max_projs=max_projs, size=size, init_recon=2, stop_criterion=1, current_xy=(xc, yc), save=True,
-                filename=image, verbose=True, clip_X_upp_bound=False, diapl=False, to_search_for_best_stamp=False, offset=offset,
-                flux=flux_before
+                filename=image, verbose=True, clip_X_upp_bound=True, diapl=False, to_search_for_best_stamp=False, offset=offset,
+                flux=None, scale_data=True, ccd_sat_level=None
             )
 
             mask_after = make_source_mask(recon_img, nsigma=2, npixels=5, dilate_size=5)
@@ -746,7 +744,7 @@ if __name__ == "__main__":
 
             if plot:
                 fig, ax = plt.subplots(2, 2)
-                fig.suptitle("FC_SGP")
+                fig.suptitle("SGP")
 
                 ax[0, 0].imshow(cutout, origin="lower")
                 ax[0, 0].set_title("Original", loc="center")
@@ -810,7 +808,7 @@ if __name__ == "__main__":
             )
             count += 1
 
-            fits.writeto(f"FC_SGP_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
+            fits.writeto(f"SGP_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
 
     if count == 30:
         print(f"Success count: {success}")
@@ -821,7 +819,7 @@ if __name__ == "__main__":
             final_params = np.array(final_params_list)
             df = pd.DataFrame(final_params)
             df.columns = ["image", "num_iters", "execution_time", "DEFAULT_PARAMS", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "centroid_err", "l1_centroid_err", "l2_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
-            df.to_csv("fc_sgp_params_and_metrics.csv")
+            df.to_csv("sgp_params_and_metrics.csv")
         sys.exit()
 
     print(f"Success count: {success}")
@@ -831,4 +829,4 @@ if __name__ == "__main__":
         np.save("original_radprofs.npy", np.array(original_radprofs))
         final_params = np.array(final_params_list)
         df = pd.DataFrame(final_params)
-        df.to_csv("fc_sgp_params_and_metrics.csv")
+        df.to_csv("sgp_params_and_metrics.csv")
