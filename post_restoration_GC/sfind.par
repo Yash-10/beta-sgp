@@ -1,9 +1,0 @@
-C_MIN   = 0.2	// covariance threshold for detection
-APRAD   = 1.2	// aperture radius in FWHMs
-ANRAD1  = 20.0	// lower radius of background annulus
-ANRAD2  = 25.0	// uppwer radius of background annulus
-THRESH  = 2.0	// sigma threshold
-DXY     = 6.0	// maximum distance of brightest pixel from centroid
-BKG_ALG = median	// supported modes are: mode, median, mean
-VERBOSE = 2	// verbosity level
-END
