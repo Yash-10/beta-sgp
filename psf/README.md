@@ -17,4 +17,4 @@ y_orig
 vec_coeffs (till EOF)
 ```
 
-More information about this is in the DIAPL package's [documentation](http://users.camk.edu.pl/pych/DIAPL/diapl2.pdf)
+More information about this is in DIAPL package's [documentation](http://users.camk.edu.pl/pych/DIAPL/diapl2.pdf)
