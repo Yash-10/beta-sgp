@@ -151,7 +151,7 @@ def calculate_bkg(data):
     # Estimate background on this check stamp
     mask = make_source_mask(data, nsigma=2, npixels=5, dilate_size=5)
     mean, median, std = sigma_clipped_stats(data, sigma=3.0, mask=mask)
-    return median
+    return median, mask
 
 # def calculate_psnr(img, truth, max_value=1):
 #     """"Calculating peak signal-to-noise ratio (PSNR) between two images.
@@ -656,8 +656,6 @@ if __name__ == "__main__":
 
     df = pd.read_csv('coords_to_use.csv')
 
-    # os.mkdir("COMPARE_IMAGES/")
-
     for image in sorted(defect_images):
         dfnames = df['name'].tolist()
         dfnames = [fg.strip() for fg in dfnames]
@@ -674,9 +672,7 @@ if __name__ == "__main__":
             cutout = Cutout2D(data, (xc, yc), size=size, mode='partial', fill_value=0.0).data
 
             # Estimate background on check stamp.
-            _mask = make_source_mask(_check_cutout, nsigma=2, npixels=5, dilate_size=5)
-            _mean, _median, _std = sigma_clipped_stats(_check_cutout, sigma=3.0, mask=_mask)
-            bkg = _median
+            bkg, _ = calculate_bkg(_check_cutout)
 
             mask = make_source_mask(cutout, nsigma=2, npixels=5, dilate_size=5)
 
@@ -690,6 +686,9 @@ if __name__ == "__main__":
 
             ref_imagename = f'cal_ccfbtf170075r{str(1)}_{str(2)}.fits'
             best_cutout = Cutout2D(fits.getdata(ref_imagename), (xc, yc), size=size, mode='partial', fill_value=0.0).data
+            best_bkg, _ = calculate_bkg(best_cutout)
+            best_centroid = centroid_2dg(best_cutout-best_bkg)
+            print(f'Centroid of ground-truth star: {best_centroid}')
 
             # Uncomment below lines if you want to use validation.
             # params = validate_single(
@@ -708,14 +707,12 @@ if __name__ == "__main__":
             recon_img, rel_klds, rel_recon_errors, num_iters, extract_coord, execution_time, best_section = sgp(
                 cutout, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
                 alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=None, best_coord=(xc, yc), best_cutout=best_cutout,
-                max_projs=max_projs, size=size, init_recon=2, stop_criterion=1, current_xy=(xc, yc), save=True,
+                max_projs=max_projs, size=size, init_recon=2, stop_criterion=2, current_xy=(xc, yc), save=True,
                 filename=image, verbose=True, clip_X_upp_bound=False, diapl=False, to_search_for_best_stamp=False, offset=offset,
                 flux=flux_before
             )
 
-            mask_after = make_source_mask(recon_img, nsigma=2, npixels=5, dilate_size=5)
-            mean_after, median_after, std_after = sigma_clipped_stats(recon_img, sigma=3.0, mask=mask_after)
-            bkg_after = median_after
+            bkg_after, mask_after = calculate_bkg(recon_img)
 
             prop_table_after = source_info(recon_img, bkg_after, mask_after, approx_size).to_table()
             flux_after = prop_table_after['segment_flux'].value[0]
@@ -725,13 +722,11 @@ if __name__ == "__main__":
             print(f"Flux after: {flux_after} +- {flux_after_err}")
 
             # We calculate ellipticity and fwhm from the `radprof_ellipticity` module.
-            before_ecc, before_fwhm = calculate_ellipticity_fwhm(cutout, use_moments=True)
-            after_ecc, after_fwhm = calculate_ellipticity_fwhm(recon_img, use_moments=True)
+            before_ecc, before_fwhm = calculate_ellipticity_fwhm(cutout-bkg, bkg, use_moments=True)
+            after_ecc, after_fwhm = calculate_ellipticity_fwhm(recon_img-bkg_after, bkg_after, use_moments=True)
 
             before_center = centroid_2dg(cutout-bkg)
             after_center = centroid_2dg(recon_img-bkg_after)
-            centroid_err = (before_center[0]-after_center[0], before_center[1]-after_center[1])
-            l2_centroid_err = np.linalg.norm(before_center-after_center)
             l1_centroid_err = abs(before_center[0]-after_center[0]) + abs(before_center[1]-after_center[1])
 
             if verbose:
@@ -741,7 +736,6 @@ if __name__ == "__main__":
                 print(f"Flux (before): {flux_before}")
                 print(f"Flux (after): {flux_after}")
                 print(f"Ideal stamp for relative reconstruction error at x, y = {extract_coord}")
-                print(f"Centroid error (before-after) = {centroid_err}")
                 print("\n\n")
 
             if plot:
@@ -779,7 +773,7 @@ if __name__ == "__main__":
                 plt.show()
 
             ## Success/Failure based on flux criterion ##
-            flux_thresh = 0.1 * flux_before
+            flux_thresh = 0.5 * flux_before
             if flux_after < flux_before + flux_thresh and flux_after > flux_before - flux_thresh:
                 success += 1
                 flag = 1  # Flag to denote if reconstruction is under the flux limit.
@@ -787,26 +781,16 @@ if __name__ == "__main__":
                 failure += 1
                 flag = 0
 
-            ######################
-            ### Radial Profile ###
-            ######################
-
-            orig_center = centroid_2dg(cutout)
-            original_radprof = radial_profile(cutout, orig_center)[:17]
-            original_radprofs.append(original_radprof)
-
             print(f"Success till now: {success}")
             print(f"Failure till now: {failure}")
 
             execution_time = np.round(execution_time, 3)
-            centroid_err = np.round(centroid_err, 3)
             l1_centroid_err = np.round(l1_centroid_err, 3)
-            l2_centroid_err = np.round(l2_centroid_err, 3)
 
             # Update final needed parameters list.
             star_coord = (xc, yc)
             final_params_list.append(
-                [image, num_iters, execution_time, DEFAULT_PARAMS, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), centroid_err, l1_centroid_err, l2_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
+                [image, num_iters, execution_time, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), bkg, bkg_after, l1_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
             )
             count += 1
 
@@ -817,10 +801,9 @@ if __name__ == "__main__":
         print(f"Failure count: {failure}")
 
         if save:
-            np.save("original_radprofs.npy", np.array(original_radprofs))
             final_params = np.array(final_params_list)
             df = pd.DataFrame(final_params)
-            df.columns = ["image", "num_iters", "execution_time", "DEFAULT_PARAMS", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "centroid_err", "l1_centroid_err", "l2_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
+            df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
             df.to_csv("fc_sgp_params_and_metrics.csv")
         sys.exit()
 
@@ -828,7 +811,7 @@ if __name__ == "__main__":
     print(f"Failure count: {failure}")
 
     if save:
-        np.save("original_radprofs.npy", np.array(original_radprofs))
         final_params = np.array(final_params_list)
         df = pd.DataFrame(final_params)
+        df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
         df.to_csv("fc_sgp_params_and_metrics.csv")

@@ -18,7 +18,7 @@ from scipy.stats import entropy
 
 def radial_profile(data, positions, length=20):
     """
-    data: 2D numpy array whose radial profile needs to be calculated.
+    data: 2D numpy array whose radial profile needs to be calculated (must be background subtracted).
     positions: Pixel coordinate location in `data` termed as center.
     length: How many points to calculate for the radial profile, defaults to 20.
 
@@ -27,33 +27,27 @@ def radial_profile(data, positions, length=20):
     - It uses difference between consecutive aperture sums to get the profile.
 
     """
-    bkg = MedianBackground()
-    bkg = bkg.calc_background(data)
-
     radii = np.arange(1, length+1)
     apertures = [CircularAperture(positions, r=r) for r in radii]
-    phot_table = aperture_photometry(data - bkg, apertures)
+    phot_table = aperture_photometry(data, apertures)
     aperture_sums = [phot_table[f"aperture_sum_{i-1}"] for i in range(1, length+1)]  # i-1 because aperture_sum_<i> starts from i = 0.
     aperture_consecutive_diffs = [aperture_sums[0]] + [t - s for s, t in zip(aperture_sums, aperture_sums[1:])]
     aperture_consecutive_diffs = [aperture_consecutive_diffs[i].data[0] for i in range(len(aperture_consecutive_diffs))]
 
     return aperture_consecutive_diffs
 
-def calculate_ellipticity_fwhm(data, use_moments=True):
+def calculate_ellipticity_fwhm(data, bkg, use_moments=True):
     """
     data: 2D numpy array
-        Non-background subtracted data. Bkg is subtracted and the resulting image is used for analysis.
+        Background subtracted data. Bkg is subtracted and the resulting image is used for analysis.
     use_moments: bool
         Whether to use image moments to estimate ellipticity, defaults to False.
         If False, ellipticity is estimated on a gaussian fitted on the source, currently not supported.
 
     """
-    bkg = MedianBackground()
-    bkg = bkg.calc_background(data)
-
     if use_moments:
         # Use background-subtracted data, as per photutils docs: https://photutils.readthedocs.io/en/stable/api/photutils.segmentation.SourceCatalog.html
-        properties = data_properties(data - bkg, background=bkg)
+        properties = data_properties(data, background=bkg)
         ellipticity, fwhm = properties.ellipticity, properties.fwhm
         return ellipticity, fwhm
     else:  # Use a more sophisticated model fitting.
@@ -87,18 +81,24 @@ if __name__ == "__main__":
     # Median flux of all star stamps from all images.
     MEDIAN_FLUX = 61169.92578125
 
+    data = pd.read_csv('fc_sgp_params_and_metrics.csv')
+
     radprof_params_list = []
-    for oimage, rimage in zip(sorted(glob.glob("SGP_original_images/*.fits")), sorted(glob.glob("SGP_reconstructed_images/*.fits"))):  # Select all reconstructed images.
+    for oimage, rimage in zip(sorted(glob.glob("FC_SGP_original_images/*.fits")), sorted(glob.glob("FC_SGP_reconstructed_images/*.fits"))):  # Select all reconstructed images.
         rimg = fits.getdata(rimage)
         oimg = fits.getdata(oimage)
+
+        img_data = data[data['image'] == rimage.split('/')[1].split('_')[0]].iloc[0]
+        if img_data.empty:
+            raise ValueError("Empty dataframe! No match found")
         
         #### Reconstructed image radial profile ###
-        recon_center = centroid_2dg(rimg)
-        recon_radprof = radial_profile(rimg, recon_center)
+        recon_center = centroid_2dg(rimg - img_data['bkg_after'])
+        recon_radprof = radial_profile(rimg - img_data['bkg_after'], recon_center)
 
         ### Original radial profile ###
-        orig_center = centroid_2dg(oimg)
-        original_radprof = radial_profile(oimg, orig_center)
+        orig_center = centroid_2dg(oimg - img_data['bkg_before'])
+        original_radprof = radial_profile(oimg - img_data['bkg_before'], orig_center)
 
         ########### Check fitting gaussian ##########
         fitter = modeling.fitting.LevMarLSQFitter()
@@ -141,4 +141,4 @@ if __name__ == "__main__":
 
     if save:
         df = pd.DataFrame(final_radprof_params)
-        df.to_csv("radprof_params_and_metrics.csv")
+        df.to_csv("fcsgp_radprof_params_and_metrics.csv")
