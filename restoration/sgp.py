@@ -773,7 +773,7 @@ if __name__ == "__main__":
                 plt.show()
 
             ## Success/Failure based on flux criterion ##
-            flux_thresh = 0.5 * flux_before
+            flux_thresh = 0.05 * flux_before
             if flux_after < flux_before + flux_thresh and flux_after > flux_before - flux_thresh:
                 success += 1
                 flag = 1  # Flag to denote if reconstruction is under the flux limit.
