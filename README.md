@@ -1,4 +1,4 @@
-# Flux-Conserving Scaled Gradient projection (FC-SGP)
+# Flux-Conserving Scaled Gradient Projection (FC-SGP)
 
 This repository contains the official code implementation accompanying the paper: *Image Improvement and Restoration in Optical Time Series. I. The Method*. It is aimed for single-image deconvolution of astronomical images with a known Point Spread Function.
 
@@ -74,6 +74,14 @@ This repository contains the official code implementation accompanying the paper
 - Contains scripts used to produce the figures from the paper.
 
 `Automation.cl` is the IRAF automation script we generated to automate the process of removing bad bias and flat frames during the image reduction process.
+
+## Data availability
+
+
+
+## Bugs or issues
+
+If you find something not working as expected or anything weird, we would like to know and improve it! Please feel free to open an issue in the [issue tracker](https://github.com/Yash-10/fc_sgp-star-restoration/issues) or send an email to yashgondhalekar567@gmail.com
 
 ## Code motivation
 
