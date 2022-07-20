@@ -1,6 +1,6 @@
 # Flux-Conserving Scaled Gradient Projection (FC-SGP)
 
-This repository contains the official code implementation accompanying the paper: *Image Improvement and Restoration in Optical Time Series. I. The Method*. It is aimed for single-image deconvolution of astronomical images with a known Point Spread Function.
+This repository contains the official code implementation accompanying the paper: *Image Improvement and Restoration in Optical Time Series. I. The Method*. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
 
 ## Repository overview
 
@@ -57,9 +57,9 @@ This repository contains the official code implementation accompanying the paper
 </details>
 
 ### `restoration`
-- It contains the implementation for the Richardson-Lucy (RL), Scaled Gradient Projection (SGP) and the Flux-Conserving Scaled Gradient projection (FC-SGP) algorithms in `rl.py`, `original_sgp.py`, and `sgp.py` resepctively.
+- It contains the implementation for the Richardson-Lucy (RL), Scaled Gradient Projection (SGP) and the Flux-Conserving Scaled Gradient projection (FC-SGP) algorithms in `rl.py`, `original_sgp.py`, and `sgp.py` respctively.
 - `flux_conserve_proj.py` contains the flux conservation projection step code.
-- `sgp_validation.py` is for the optional validation step and `radprof_ellipticity.py` is used to calculate the radial profile and the Full-Width-Half-Maximum (FWHM).
+- `sgp_validation.py` is for the optional validation step, and `radprof_ellipticity.py` is used to calculate the radial profile and the Full-Width-Half-Maximum (FWHM).
 
 ### `psf`
 
