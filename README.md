@@ -88,7 +88,7 @@ While we say "SGP" in this example, there is a minute difference in our SGP impl
 
 ## Data availability
 
-
+The M13 globular cluster I-filter images (244 in number) used in our study are available [here](https://www.dropbox.com/s/5d6lt81o97uiv5u/processed_M13_I_filter_images.tar.gz?dl=0). These images have gone through the usual image reduction pipeline.
 
 ## Bugs or issues
 
