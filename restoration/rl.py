@@ -41,7 +41,7 @@ def apply_mask(array, data, size=40):
 
 def rl(
     image, psf, bkg_estimate, max_iter=1500, normalize_kernel=True,
-    best_stamp=None, best_coord=None, current_xy=None
+    best_stamp=None, best_coord=None, current_xy=None, flux=None
 ):
     """
     image: Observed image.
@@ -63,6 +63,7 @@ def rl(
     image = image.astype(float, copy=False)
     psf = psf.astype(float, copy=False)
     deconv_img = np.full(image.shape, 0.5, dtype=float)
+    # deconv_img = np.full(image.shape, flux/image.size, dtype=float)
     # deconv_img = image.copy()  # Does not work well for RL
 
     prev_rel_err = np.Inf  # Initialize previous relative reconstruction error.
@@ -176,6 +177,8 @@ if __name__ == "__main__":
     count = 0
     MEDIAN_FLUX = 61169.92578125  # Calculate using all stamps from the sample. TODO: Change this value.
 
+    os.mkdir("RL_original_images")
+
     # _best_base_name = 'ccfbtf170075' + 'r'
     # best_cut_image = '.'.join((_best_base_name, 'fits'))
     # best_cut_coord_list = '.'.join((_best_base_name, 'coo'))
@@ -216,7 +219,7 @@ if __name__ == "__main__":
 
             recon_img, rel_recon_errors, num_iters, execution_time, extract_coord = rl(
                 cutout, psf, bkg, max_iter=10, normalize_kernel=True,
-                best_stamp=best_cutout, current_xy=(xc, yc)
+                best_stamp=best_cutout, current_xy=(xc, yc), flux=flux_before
             )
             fits.writeto(f"RL_reconstructed_images/{image}_{xc}_{yc}_RL_recon_{num_iters}.fits", recon_img)
 
@@ -306,11 +309,11 @@ if __name__ == "__main__":
             # Update final needed parameters list.
             star_coord = (xc, yc)
             final_params_list.append(
-                [image, num_iters, execution_time, star_coord, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), l1_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
+                [image, num_iters, execution_time, star_coord, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), bkg, bkg_after, l1_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
             )
             count += 1
 
-            # fits.writeto(f"RL_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
+            fits.writeto(f"RL_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
 
     if count == 30:
         print(f"Success count: {success}")
@@ -320,7 +323,7 @@ if __name__ == "__main__":
             np.save("rl_original_radprofs.npy", np.array(original_radprofs))
             final_params = np.array(final_params_list)
             df = pd.DataFrame(final_params)
-            df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_recon_errors", "flux_before", "flux_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
+            df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
             df.to_csv("rl_params_and_metrics.csv")
         sys.exit()
 
@@ -331,5 +334,5 @@ if __name__ == "__main__":
         np.save("rl_original_radprofs.npy", np.array(original_radprofs))
         final_params = np.array(final_params_list)
         df = pd.DataFrame(final_params)
-        df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_recon_errors", "flux_before", "flux_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
+        df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
         df.to_csv("rl_params_and_metrics.csv")

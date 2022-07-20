@@ -28,7 +28,6 @@ from photutils.segmentation import SourceCatalog
 
 # from sep import extract, Background
 from sgp_validation import validate_single
-from sgp import calculate_bkg
 from flux_conserve_proj import projectDF
 from radprof_ellipticity import radial_profile, calculate_ellipticity_fwhm
 
@@ -147,6 +146,12 @@ def calculate_flux(stamp, bkg, offset=None, size=25):
         return stamp.sum() - N * bkg
     else:
         return (stamp - bkg).sum()
+
+def calculate_bkg(data):
+    # Estimate background on this check stamp
+    mask = make_source_mask(data, nsigma=2, npixels=5, dilate_size=5)
+    mean, median, std = sigma_clipped_stats(data, sigma=3.0, mask=mask)
+    return median, mask
 
 # def calculate_psnr(img, truth, max_value=1):
 #     """"Calculating peak signal-to-noise ratio (PSNR) between two images.
@@ -362,6 +367,8 @@ def sgp(
     # Computations needed only once.
     N = gn.size
     if flux is None:
+        ## calculate_flux is an helper function to calculate flux, but we use a simple flux calculation = sum(gn) - N * bkg - which might not be very accurate.
+        ## Recommended: Input a precomputed flux to SGP instead of passing None.
         flux = np.sum(gn) - N * bkg
         # flux = calculate_flux(gn, bkg, offset, size=size)
     else:  # If flux is already provided, we need to scale it. This option is recommended.
@@ -382,7 +389,7 @@ def sgp(
     ### Setup directory to store reconstructed images ###
     #####################################################
     if save:
-        dirname = "SGP_reconstructed_images/"
+        dirname = "FC_SGP_reconstructed_images/"
         try:
             os.mkdir(dirname)
         except OSError as exc:
@@ -570,7 +577,7 @@ def sgp(
             else:
                 best_section, extract_coord = best_cutout.ravel(), best_coord
 
-            # Note: We have not scaled `best_section` so the error decrement might look small.
+            # Note: If we scale `best_section`, the error decrement might look small.
             rel_err = relative_recon_error(best_section, x, scaling)
 
             if verbose:
@@ -628,8 +635,6 @@ if __name__ == "__main__":
     with open('defect_images.txt') as f:
         defect_images = f.read().splitlines()
 
-    os.mkdir("SGP_original_images")
-
     plot = False
     verbose = True
     save = True
@@ -639,9 +644,7 @@ if __name__ == "__main__":
     size = 30
     approx_size = 30
     offset = None
-    original_radprofs = []
     count = 0
-    MEDIAN_FLUX = 61169.92578125  # Calculate using all stamps from the sample. TODO: Change this value.
 
     # _best_base_name = 'ccfbtf170075' + 'r'
     # best_cut_image = '.'.join((_best_base_name, 'fits'))
@@ -697,114 +700,26 @@ if __name__ == "__main__":
                 max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = params
                 print(f"\n\nOptimal parameters: (max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M) = {params}\n\n")
 
-            recon_img, rel_klds, rel_recon_errors, num_iters, extract_coord, execution_time, best_section = sgp(
+            recon_imgFCSGP, rel_kldsFCSGP, _, num_itersFCSGP, extract_coord, execution_timeFCSGP, best_section = sgp(
                 cutout, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
                 alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=None, best_coord=(xc, yc), best_cutout=best_cutout,
-                max_projs=max_projs, size=size, init_recon=2, stop_criterion=2, current_xy=(xc, yc), save=True,
+                max_projs=max_projs, size=size, init_recon=2, stop_criterion=1, current_xy=(xc, yc), save=True,
+                filename=image, verbose=True, clip_X_upp_bound=False, diapl=False, to_search_for_best_stamp=False, offset=offset,
+                flux=flux_before
+            )
+            recon_imgSGP, rel_kldsSGP, _, num_itersSGP, extract_coord, execution_timeSGP, best_section = sgp(
+                cutout, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
+                alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=None, best_coord=(xc, yc), best_cutout=best_cutout,
+                max_projs=max_projs, size=size, init_recon=2, stop_criterion=1, current_xy=(xc, yc), save=True,
                 filename=image, verbose=True, clip_X_upp_bound=True, diapl=False, to_search_for_best_stamp=False, offset=offset,
                 flux=None, scale_data=True, ccd_sat_level=None
             )
 
-            bkg_after, mask_after = calculate_bkg(recon_img)
-
-            prop_table_after = source_info(recon_img, bkg_after, mask_after, approx_size).to_table()
-            flux_after = prop_table_after['segment_flux'].value[0]
-            flux_after_err = prop_table_after['segment_fluxerr'].value[0]
-
-            print(f"Flux before: {flux_before} +- {flux_before_err}")
-            print(f"Flux after: {flux_after} +- {flux_after_err}")
-
-            # We calculate ellipticity and fwhm from the `radprof_ellipticity` module.
-            before_ecc, before_fwhm = calculate_ellipticity_fwhm(cutout-bkg, bkg, use_moments=True)
-            after_ecc, after_fwhm = calculate_ellipticity_fwhm(recon_img-bkg_after, bkg_after, use_moments=True)
-
-            before_center = centroid_2dg(cutout-bkg)
-            after_center = centroid_2dg(recon_img-bkg_after)
-            l1_centroid_err = abs(before_center[0]-after_center[0]) + abs(before_center[1]-after_center[1])
-
-            if verbose:
-                print("\n\n")
-                print(f"No. of iterations: {num_iters}")
-                print(f"Execution time: {execution_time}s")
-                print(f"Flux (before): {flux_before}")
-                print(f"Flux (after): {flux_after}")
-                print(f"Ideal stamp for relative reconstruction error at x, y = {extract_coord}")
-                print("\n\n")
-
-            if plot:
-                fig, ax = plt.subplots(2, 2)
-                fig.suptitle("SGP")
-
-                ax[0, 0].imshow(cutout, origin="lower")
-                ax[0, 0].set_title("Original", loc="center")
-                ax[0, 1].imshow(recon_img.reshape(size, size), origin="lower")
-                ax[0, 1].set_title("Reconstructed", loc="center")
-                ax[1, 0].plot(rel_klds[:-1])  # Don't select the last value since from that value, the error rises - for plotting reasons.
-                ax[1, 0].set_xticks(range(0, num_iters))
-                ax[1, 0].set_title("Relative KL divergence", loc="center")
-                ax[1, 1].plot(rel_recon_errors[:-1])
-                ax[1, 1].set_xticks(range(0, num_iters))
-                ax[1, 1].set_title("Relative reconstruction error", loc="center")
-                ax[1, 0].set_xlabel("Iteration no.")
-                ax[1, 1].set_xlabel("Iteration no.")
-
-                # From https://stackoverflow.com/questions/12998430/remove-xticks-in-a-matplotlib-plot
-                ax[0, 0].tick_params(
-                    axis='x',          # changes apply to the x-axis
-                    which='both',      # both major and minor ticks are affected
-                    bottom=False,      # ticks along the bottom edge are off
-                    top=False,         # ticks along the top edge are off
-                    labelbottom=False
-                ) # labels along the bottom edge are off
-                ax[0, 1].tick_params(
-                    axis='x',          # changes apply to the x-axis
-                    which='both',      # both major and minor ticks are affected
-                    bottom=False,      # ticks along the bottom edge are off
-                    top=False,         # ticks along the top edge are off
-                    labelbottom=False
-                )
-                plt.show()
-
-            ## Success/Failure based on flux criterion ##
-            flux_thresh = 0.05 * flux_before
-            if flux_after < flux_before + flux_thresh and flux_after > flux_before - flux_thresh:
-                success += 1
-                flag = 1  # Flag to denote if reconstruction is under the flux limit.
-            else:
-                failure += 1
-                flag = 0
-
-            print(f"Success till now: {success}")
-            print(f"Failure till now: {failure}")
-
-            execution_time = np.round(execution_time, 3)
-            l1_centroid_err = np.round(l1_centroid_err, 3)
-
-            # Update final needed parameters list.
-            star_coord = (xc, yc)
             final_params_list.append(
-                [image, num_iters, execution_time, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), bkg, bkg_after, l1_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
+                [image, rel_kldsFCSGP, rel_kldsSGP, execution_timeFCSGP, execution_timeSGP, num_itersFCSGP, num_itersSGP]
             )
-            count += 1
 
-            fits.writeto(f"SGP_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
-
-    if count == 30:
-        print(f"Success count: {success}")
-        print(f"Failure count: {failure}")
-
-        if save:
-            final_params = np.array(final_params_list)
-            df = pd.DataFrame(final_params)
-            df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
-            df.to_csv("sgp_params_and_metrics.csv")
-        sys.exit()
-
-    print(f"Success count: {success}")
-    print(f"Failure count: {failure}")
-
-    if save:
-        final_params = np.array(final_params_list)
-        df = pd.DataFrame(final_params)
-        df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
-        df.to_csv("sgp_params_and_metrics.csv")
+    final_params = np.array(final_params_list)
+    df = pd.DataFrame(final_params)
+    df.columns = ['image', 'rel_kldsFCSGP', 'rel_kldsSGP', 'execution_timeFCSGP', 'execution_timeSGP', 'num_itersFCSGP', 'num_itersSGP']
+    df.to_csv('compare_sgp_and_fcsgp_kld.csv')
