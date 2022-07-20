@@ -6,7 +6,7 @@ This repository contains the official code implementation accompanying the paper
 
 <details>
 <summary>Click here to see the folder structure</summary>
-<br>
+<pre>
 .
 ├── Automation.cl
 ├── paper_plots
@@ -53,7 +53,7 @@ This repository contains the official code implementation accompanying the paper
     └── sgp_params_and_metrics.csv
 
 4 directories, 39 files
-</br>
+</pre>
 </details>
 
 ### `restoration`
@@ -73,7 +73,7 @@ This repository contains the official code implementation accompanying the paper
 
 - Contains scripts used to produce the figures from the paper.
 
-- `Automation.cl` is the IRAF automation script we generated to automate the process of removing bad bias and flat frames during the image reduction process.
+`Automation.cl` is the IRAF automation script we generated to automate the process of removing bad bias and flat frames during the image reduction process.
 
 ## Code motivation
 
@@ -82,4 +82,5 @@ The code presented here is a modified, Python implementation of the [Matlab SGP 
 ## References
 
 [1] Efficient deconvolution methods for astronomical imaging: algorithms and IDL-GPU codes M.  Prato, R.  Cavicchioli, L.  Zanni, P.  Boccacci, M.  Bertero A&A 539 A133 (2012) DOI: 10.1051/0004-6361/201118681
+
 [2] Pych, W. Difference Image Analysis Package (DIAPL).
