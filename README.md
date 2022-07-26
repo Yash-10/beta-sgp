@@ -2,6 +2,8 @@
 
 This repository contains the official code implementation accompanying the paper: *Image Improvement and Restoration in Optical Time Series. I. The Method*. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
 
+arXiv preprint: https://arxiv.org/abs/2207.10973
+
 ## Repository overview
 
 <details>
