@@ -81,9 +81,9 @@ def sgp(
         2. np.multiply(a, b) (or a * b) is same as a .* b
         3. If C = [1, 2, 3], then C[0:2] is same as C(1:2).
             In general, array[i:k] in NumPy is same as array(i+1:k) in MATLAB.
-        4. x.T in Numpy is the same as x' in matlab, where x is a two-dimensional array.
+        4. x.conj().T in Numpy is the same as x' in matlab, where x is a two-dimensional array.
 
-        * Instead of using Afunction, here a slightly different approach is used as compared to SGP-dec.
+        * Afunction implementation is provided (similar to SGP-dec). A slightly different approach compared to SGP-dec is also commented out in the code.
         * See here: https://numpy.org/doc/stable/user/numpy-for-matlab-users.html for more details.
 
     """
