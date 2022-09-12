@@ -97,59 +97,59 @@ def sgp(
 
     _shape = gn.shape
 
-    # TF = np.fft.fftn(np.fft.fftshift(psf))
-    # CTF = np.conj(TF)
-    # def afunction(x, TF, dimensions):
-    #     x = np.reshape(x, dimensions)
-    #     out = np.real(np.fft.ifftn(
-    #         np.multiply(TF, np.fft.fftn(x))
-    #     ))
-    #     out = out.flatten()
-    #     return out
+    TF = np.fft.fftn(np.fft.fftshift(psf))
+    CTF = np.conj(TF)
+    def afunction(x, TF, dimensions):
+        x = np.reshape(x, dimensions)
+        out = np.real(np.fft.ifftn(
+            np.multiply(TF, np.fft.fftn(x))
+        ))
+        out = out.flatten()
+        return out
 
-    # A = partial(afunction, TF=TF, dimensions=psf.shape)
-    # AT = partial(afunction, TF=CTF, dimensions=psf.shape)
+    A = partial(afunction, TF=TF, dimensions=psf.shape)
+    AT = partial(afunction, TF=CTF, dimensions=psf.shape)
 
-    def A(psf, x):
-        """Describes the PSF function.
+    # def A(psf, x):
+    #     """Describes the PSF function.
 
-        Args:
-            psf (numpy.ndarray): PSF matrix.
-            x (numpy.ndarray): Image with which PSF needs to be convolved.
+    #     Args:
+    #         psf (numpy.ndarray): PSF matrix.
+    #         x (numpy.ndarray): Image with which PSF needs to be convolved.
 
-        Returns:
-            numpy.ndarray: Convoluted version of image `x`.
+    #     Returns:
+    #         numpy.ndarray: Convoluted version of image `x`.
 
-        Note
-        ----
-        It uses the FFT version of the convolution to speed up the convolution process.
+    #     Note
+    #     ----
+    #     It uses the FFT version of the convolution to speed up the convolution process.
 
-        """
-        x = x.reshape(_shape)
-        conv = convolve_fft(x, psf, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
-        return conv
+    #     """
+    #     x = x.reshape(_shape)
+    #     conv = convolve_fft(x, psf, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
+    #     return conv
 
-    def AT(psf, x):
-        """Describes the transposed PSF function.
+    # def AT(psf, x):
+    #     """Describes the transposed PSF function.
 
-        Args:
-            psf (numpy.ndarray): PSF matrix.
-            x (numpy.ndarray): Image with which PSF needs to be convolved.
+    #     Args:
+    #         psf (numpy.ndarray): PSF matrix.
+    #         x (numpy.ndarray): Image with which PSF needs to be convolved.
 
-        Returns:
-            numpy.ndarray: Transpose-convoluted version of image `x`.
+    #     Returns:
+    #         numpy.ndarray: Transpose-convoluted version of image `x`.
 
-        Note
-        ----
-        It uses the FFT version of the convolution to speed up the convolution process.
+    #     Note
+    #     ----
+    #     It uses the FFT version of the convolution to speed up the convolution process.
 
-        """
-        x = x.reshape(_shape)
-        conv = convolve_fft(x, psf.conj().T, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
-        return conv
+    #     """
+    #     x = x.reshape(_shape)
+    #     conv = convolve_fft(x, psf.conj().T, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
+    #     return conv
 
-    A = partial(A, psf=psf)
-    AT = partial(AT, psf=psf)
+    # A = partial(A, psf=psf)
+    # AT = partial(AT, psf=psf)
 
     t0 = timer()  # Start clock timer.
 
