@@ -2,6 +2,7 @@
 
 import numpy as np
 
+
 def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol_lam=1e-11, biter=0, siter=0, max_projs=1000):
     """
     Equation: min 0.5 * x' * diag(dia) * x - c' * x
@@ -23,7 +24,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
     r = np.sum(x) - b
 
     if abs(r) < tol_r:
-        return
+        return x
 
     if r < 0:
         lambdal = lambda_
