@@ -3,7 +3,7 @@ from scipy.io import loadmat
 from sgp import sgp
 
 def test_sgp_with_sgpdec_ngc():
-    ngc7027 = loadmat('data/NGC7027_255.mat')
+    ngc7027 = loadmat('test_data/NGC7027_255.mat')
 
     image = ngc7027['gn']
     psf = ngc7027['psf']
@@ -19,7 +19,7 @@ def test_sgp_with_sgpdec_ngc():
     print(rel_err)
 
 def test_sgp_with_sgpdec_satellite():
-    sat = loadmat('data/satellite_25500.mat')
+    sat = loadmat('test_data/satellite_25500.mat')
 
     image = sat['gn']
     psf = sat['psf']
