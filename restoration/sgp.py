@@ -1,4 +1,43 @@
 import os
+import errno
+import glob
+import logging
+import numpy as np
+import pandas as pd
+import sys
+from math import floor
+from functools import partial
+# Use default_timer instead of timeit.timeit: Reasons here: https://stackoverflow.com/a/25823885
+from timeit import default_timer as timer
+
+import astropy.units as u
+from astropy.io import fits
+
+from photutils.background import Background2D, MedianBackground, MeanBackground, StdBackgroundRMS
+
+from astropy.nddata import Cutout2D
+from astropy.stats import sigma_clipped_stats, SigmaClip, gaussian_fwhm_to_sigma
+from astropy.wcs import WCS
+from astropy.coordinates import SkyCoord
+from astropy.convolution import convolve, convolve_fft
+from photutils.segmentation import detect_threshold, detect_sources, make_source_mask, SegmentationImage
+
+import matplotlib.pyplot as plt
+
+from photutils.centroids import centroid_2dg
+from sklearn.preprocessing import KernelCenterer
+
+from sgp_validation import validate_single
+from flux_conserve_proj import projectDF
+from radprof_ellipticity import radial_profile, calculate_ellipticity_fwhm
+from utils import decide_star_cutout_size, calculate_flux, calculate_bkg, source_info
+from afunction import afunction
+
+
+DEFAULT_PARAMS = (1000, 1e-4, 0.4, 1e-5, 1e5, 1e1, 3, 0.5, 1)
+
+
+import os
 import sys
 import errno
 import glob
@@ -28,19 +67,18 @@ from photutils.centroids import centroid_2dg
 from sklearn.preprocessing import KernelCenterer
 
 from flux_conserve_proj import projectDF
-from utils import calculate_bkg, source_info, preprocess
+from utils import calculate_bkg, source_info
+
 
 DEFAULT_PARAMS = (1000, 1e-4, 0.4, 1e-5, 1e5, 1e1, 3, 0.5, 1)
-
-
+# TODO: Add option of passing ground-truth and log error at each iteration -- see sgp-dec.
 def sgp(
-    gn, psf, bkg, init_recon=0, proj_type=0, stop_criterion=0, MAXIT=27,
+    gn, psf, bkg, init_recon=0, proj_type=0, stop_criterion=0, MAXIT=500,
     gamma=1e-4, beta=0.4, alpha=1.3, alpha_min=1e-5, alpha_max=1e5, M_alpha=3,
     tau=0.5, M=1, max_projs=1000, clip_X_upp_bound=True, save=True,
     verbose=True, flux=None, ccd_sat_level=None, scale_data=True
 ):
     """Perform the SGP algorithm on a single star stamp.
-
     Args:
         gn (_type_): Observed star cutout image.
         psf (_type_): PSF matrix.
@@ -68,13 +106,10 @@ def sgp(
         flux (_type_, optional): Precomputed flux of the object inside `gn`. Defaults to None.
         ccd_sat_level (float, optional): Saturating pixel value (i.e. counts) for the CCD used. Defaults to 65000.0.
         scale_data (bool, optional): Whether to scale `gn`, 'bkg`, and `x` (the reconstructed image) before applying SGP. Defaults to False.
-
     Raises:
         OSError: _description_
-
     Returns:
         _type_: _description_
-
     Notes:
         == Porting from MATLAB to Numpy ==
         1. np.dot(a, b) is same as dot(a, b) ONLY for 1-D arrays.
@@ -82,74 +117,65 @@ def sgp(
         3. If C = [1, 2, 3], then C[0:2] is same as C(1:2).
             In general, array[i:k] in NumPy is same as array(i+1:k) in MATLAB.
         4. x.conj().T in Numpy is the same as x' in matlab, where x is a two-dimensional array.
-
         * Afunction implementation is provided (similar to SGP-dec). A slightly different approach compared to SGP-dec is also commented out in the code.
         * See here: https://numpy.org/doc/stable/user/numpy-for-matlab-users.html for more details.
-
     """
     # Check normalization condition of PSF.
     checkPSF = np.abs(np.sum(psf.flatten()) - 1.)
     tolCheckPSF = 1e4 * np.finfo(float).eps
     if checkPSF > tolCheckPSF:
-        raise ValueError("PSF is not properly normalized! Ensure that each column of the PSF matrix sums up to one.")
+        errmsg = f"\n\tsum(psf) - 1. = {checkPSF}, tolerance = {tolCheckPSF}"
+        raise ValueError(f'PSF is not normalized! Provide a normalized PSF! {errmsg}')
 
     logging.basicConfig(filename='sgp.log', level=logging.INFO, force=True)
 
     _shape = gn.shape
 
-    TF = np.fft.fftn(np.fft.fftshift(psf))
-    CTF = np.conj(TF)
-    def afunction(x, TF, dimensions):
-        x = np.reshape(x, dimensions)
-        out = np.real(np.fft.ifftn(
-            np.multiply(TF, np.fft.fftn(x))
-        ))
-        out = out.flatten()
-        return out
+    # TF = np.fft.fftn(np.fft.fftshift(psf))
+    # CTF = np.conj(TF)
+    # def afunction(x, TF, dimensions):
+    #     x = np.reshape(x, dimensions)
+    #     out = np.real(np.fft.ifftn(
+    #         np.multiply(TF, np.fft.fftn(x))
+    #     ))
+    #     out = out.flatten()
+    #     return out
 
-    A = partial(afunction, TF=TF, dimensions=psf.shape)
-    AT = partial(afunction, TF=CTF, dimensions=psf.shape)
+    # A = partial(afunction, TF=TF, dimensions=psf.shape)
+    # AT = partial(afunction, TF=CTF, dimensions=psf.shape)
 
-    # def A(psf, x):
-    #     """Describes the PSF function.
+    def A(psf, x):
+        """Describes the PSF function.
+        Args:
+            psf (numpy.ndarray): PSF matrix.
+            x (numpy.ndarray): Image with which PSF needs to be convolved.
+        Returns:
+            numpy.ndarray: Convoluted version of image `x`.
+        Note
+        ----
+        It uses the FFT version of the convolution to speed up the convolution process.
+        """
+        x = x.reshape(_shape)
+        conv = convolve_fft(x, psf, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
+        return conv
 
-    #     Args:
-    #         psf (numpy.ndarray): PSF matrix.
-    #         x (numpy.ndarray): Image with which PSF needs to be convolved.
+    def AT(psf, x):
+        """Describes the transposed PSF function.
+        Args:
+            psf (numpy.ndarray): PSF matrix.
+            x (numpy.ndarray): Image with which PSF needs to be convolved.
+        Returns:
+            numpy.ndarray: Transpose-convoluted version of image `x`.
+        Note
+        ----
+        It uses the FFT version of the convolution to speed up the convolution process.
+        """
+        x = x.reshape(_shape)
+        conv = convolve_fft(x, psf.conj().T, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
+        return conv
 
-    #     Returns:
-    #         numpy.ndarray: Convoluted version of image `x`.
-
-    #     Note
-    #     ----
-    #     It uses the FFT version of the convolution to speed up the convolution process.
-
-    #     """
-    #     x = x.reshape(_shape)
-    #     conv = convolve_fft(x, psf, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
-    #     return conv
-
-    # def AT(psf, x):
-    #     """Describes the transposed PSF function.
-
-    #     Args:
-    #         psf (numpy.ndarray): PSF matrix.
-    #         x (numpy.ndarray): Image with which PSF needs to be convolved.
-
-    #     Returns:
-    #         numpy.ndarray: Transpose-convoluted version of image `x`.
-
-    #     Note
-    #     ----
-    #     It uses the FFT version of the convolution to speed up the convolution process.
-
-    #     """
-    #     x = x.reshape(_shape)
-    #     conv = convolve_fft(x, psf.conj().T, normalize_kernel=True, normalization_zero_tol=1e-4).ravel()
-    #     return conv
-
-    # A = partial(A, psf=psf)
-    # AT = partial(AT, psf=psf)
+    A = partial(A, psf=psf)
+    AT = partial(AT, psf=psf)
 
     t0 = timer()  # Start clock timer.
 
@@ -179,6 +205,7 @@ def sgp(
         tol = 1 + 1 / np.mean(gn)
 
     # Scaling
+    # !! Note that for stop_criterion=3 where the KL divergence is calculated, it is important to scale the data since KL divergence needs probabilities. In future, it might be helpful to forcefully scale data if stop_criterion=3
     if scale_data:
         scaling = np.max(gn)
         gn = gn / scaling
@@ -409,24 +436,18 @@ if __name__ == "__main__":
     with open('defect_images.txt') as f:
         defect_images = f.read().splitlines()
 
-    os.mkdir("FC_SGP_original_images")
+    # os.mkdir("FC_SGP_original_images")
 
-    plot = False
+    plot = True
     verbose = True
-    save = True
+    save = False
     final_params_list = []
     success = 0
     failure = 0
     size = 30
-    approx_size = 30
+    localbkg_width = 30
     offset = None
-    original_radprofs = []
     count = 0
-    MEDIAN_FLUX = 61169.92578125  # Calculate using all stamps from the sample. TODO: Change this value.
-
-    # _best_base_name = 'ccfbtf170075' + 'r'
-    # best_cut_image = '.'.join((_best_base_name, 'fits'))
-    # best_cut_coord_list = '.'.join((_best_base_name, 'coo'))
 
     df = pd.read_csv('coords_to_use.csv')
 
@@ -439,30 +460,27 @@ if __name__ == "__main__":
         data = fits.getdata(image.split('.')[0] + 'r' + '1_2.fits')
 
         stars = df[df['name'] == image][[' x', ' y']].to_numpy()
-        print(stars)
+
         for xc, yc in stars:
             print(f'Coordindates: x: {xc}, y: {yc}')
-            _check_cutout = Cutout2D(data, (xc, yc), size=60, mode='partial', fill_value=0.0, copy=True).data
+            _check_cutout = Cutout2D(data, (xc, yc), size=size+30, mode='partial', fill_value=0.0, copy=True).data  # Extract slightly larger stamp for more accurate background estimation.
             cutout = Cutout2D(data, (xc, yc), size=size, mode='partial', fill_value=0.0).data
 
             # Estimate background on check stamp.
             bkg, _ = calculate_bkg(_check_cutout)
-
             mask = make_source_mask(cutout, nsigma=2, npixels=5, dilate_size=5)
 
-            prop_table_before = source_info(cutout, bkg, mask, approx_size).to_table()
+            prop_table_before = source_info(cutout, bkg, mask, localbkg_width).to_table()
             flux_before = prop_table_before['segment_flux'].value[0]
             flux_before_err = prop_table_before['segment_fluxerr'].value[0]
+
+            # Get PSF matrix.
+            # TODO: Decide whether to use this or photutils ePSF method for PSF modelling.
             psf = fits.getdata(f'../work/psf{image.split(".")[0]}_{str(1)}_{str(2)}_img.fits')
             # Center the PSF matrix
             psf = KernelCenterer().fit_transform(psf)
             psf = np.abs(psf)
-
-            ref_imagename = f'cal_ccfbtf170075r{str(1)}_{str(2)}.fits'
-            best_cutout = Cutout2D(fits.getdata(ref_imagename), (xc, yc), size=size, mode='partial', fill_value=0.0).data
-            best_bkg, _ = calculate_bkg(best_cutout)
-            best_centroid = centroid_2dg(best_cutout-best_bkg)
-            print(f'Centroid of ground-truth star: {best_centroid}')
+            psf = psf/psf.sum()
 
             # Uncomment below lines if you want to use validation.
             # params = validate_single(
@@ -470,25 +488,19 @@ if __name__ == "__main__":
             #     best_cutout=best_cutout, xbest=x, ybest=y
             # )
             params = DEFAULT_PARAMS
+            max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = params
+            print(f"\n\nParameters used: (max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M) = {params}\n\n")
 
-            if params is None:  # If no optimal parameter that satisfied all conditions, then use default.
-                print("\n\nNo best parameter found that matches all conditions. Falling to default params\n\n")
-                max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
-            else:
-                max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = params
-                print(f"\n\nOptimal parameters: (max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M) = {params}\n\n")
-
-            recon_img, rel_klds, rel_recon_errors, num_iters, extract_coord, execution_time, best_section = sgp(
-                cutout, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min, alpha_max=alpha_max,
-                alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1, best_img=None, best_coord=(xc, yc), best_cutout=best_cutout,
-                max_projs=max_projs, size=size, init_recon=2, stop_criterion=2, current_xy=(xc, yc), save=True,
-                filename=image, verbose=True, clip_X_upp_bound=False, diapl=False, to_search_for_best_stamp=False, offset=offset,
-                flux=flux_before
+            recon_img, num_iters, _, execution_times = sgp(
+                cutout, psf, bkg, gamma=gamma, beta=beta, alpha_min=alpha_min,
+                alpha_max=alpha_max, alpha=alpha, M_alpha=M_alpha, tau=tau, M=M, proj_type=1,
+                max_projs=max_projs, init_recon=2, stop_criterion=3, save=True, verbose=True,
+                clip_X_upp_bound=True, flux=flux_before, ccd_sat_level=65000, scale_data=True
             )
 
             bkg_after, mask_after = calculate_bkg(recon_img)
-
-            prop_table_after = source_info(recon_img, bkg_after, mask_after, approx_size).to_table()
+            prop_table_after = source_info(
+                recon_img, bkg_after, mask_after, localbkg_width).to_table()
             flux_after = prop_table_after['segment_flux'].value[0]
             flux_after_err = prop_table_after['segment_fluxerr'].value[0]
 
@@ -506,38 +518,29 @@ if __name__ == "__main__":
             if verbose:
                 print("\n\n")
                 print(f"No. of iterations: {num_iters}")
-                print(f"Execution time: {execution_time}s")
+                print(f"Execution time: {execution_times[-1]}s")
                 print(f"Flux (before): {flux_before}")
                 print(f"Flux (after): {flux_after}")
-                print(f"Ideal stamp for relative reconstruction error at x, y = {extract_coord}")
                 print("\n\n")
 
             if plot:
-                fig, ax = plt.subplots(2, 2)
+                fig, ax = plt.subplots(1, 2)
                 fig.suptitle("FC_SGP")
 
-                ax[0, 0].imshow(cutout, origin="lower")
-                ax[0, 0].set_title("Original", loc="center")
-                ax[0, 1].imshow(recon_img.reshape(size, size), origin="lower")
-                ax[0, 1].set_title("Reconstructed", loc="center")
-                ax[1, 0].plot(rel_klds[:-1])  # Don't select the last value since from that value, the error rises - for plotting reasons.
-                ax[1, 0].set_xticks(range(0, num_iters))
-                ax[1, 0].set_title("Relative KL divergence", loc="center")
-                ax[1, 1].plot(rel_recon_errors[:-1])
-                ax[1, 1].set_xticks(range(0, num_iters))
-                ax[1, 1].set_title("Relative reconstruction error", loc="center")
-                ax[1, 0].set_xlabel("Iteration no.")
-                ax[1, 1].set_xlabel("Iteration no.")
+                ax[0].imshow(cutout, origin="lower")
+                ax[0].set_title("Original", loc="center")
+                ax[1].imshow(recon_img.reshape(size, size), origin="lower")
+                ax[1].set_title("Reconstructed", loc="center")
 
                 # From https://stackoverflow.com/questions/12998430/remove-xticks-in-a-matplotlib-plot
-                ax[0, 0].tick_params(
+                ax[0].tick_params(
                     axis='x',          # changes apply to the x-axis
                     which='both',      # both major and minor ticks are affected
                     bottom=False,      # ticks along the bottom edge are off
                     top=False,         # ticks along the top edge are off
                     labelbottom=False
                 ) # labels along the bottom edge are off
-                ax[0, 1].tick_params(
+                ax[1].tick_params(
                     axis='x',          # changes apply to the x-axis
                     which='both',      # both major and minor ticks are affected
                     bottom=False,      # ticks along the bottom edge are off
@@ -558,17 +561,17 @@ if __name__ == "__main__":
             print(f"Success till now: {success}")
             print(f"Failure till now: {failure}")
 
-            execution_time = np.round(execution_time, 3)
+            execution_time = np.round(np.sum(execution_times), 3)
             l1_centroid_err = np.round(l1_centroid_err, 3)
 
             # Update final needed parameters list.
             star_coord = (xc, yc)
             final_params_list.append(
-                [image, num_iters, execution_time, star_coord, rel_klds, rel_recon_errors, np.round(flux_before, 3), np.round(flux_after, 3), bkg, bkg_after, l1_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
+                [image, num_iters, execution_time, star_coord, np.round(flux_before, 3), np.round(flux_after, 3), bkg, bkg_after, l1_centroid_err, before_ecc, after_ecc, np.round(before_fwhm.value, 3), np.round(after_fwhm.value, 3), flag]
             )
             count += 1
 
-            fits.writeto(f"FC_SGP_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
+            # fits.writeto(f"FC_SGP_original_images/{image}_{xc}_{yc}_SGP_orig.fits", cutout)
 
     if count == 30:
         print(f"Success count: {success}")
@@ -577,7 +580,7 @@ if __name__ == "__main__":
         if save:
             final_params = np.array(final_params_list)
             df = pd.DataFrame(final_params)
-            df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
+            df.columns = ["image", "num_iters", "execution_time", "star_coord", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
             df.to_csv("fc_sgp_params_and_metrics.csv")
         sys.exit()
 
@@ -587,5 +590,5 @@ if __name__ == "__main__":
     if save:
         final_params = np.array(final_params_list)
         df = pd.DataFrame(final_params)
-        df.columns = ["image", "num_iters", "execution_time", "star_coord", "rel_klds", "rel_recon_errors", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
+        df.columns = ["image", "num_iters", "execution_time", "star_coord", "flux_before", "flux_after", "bkg_before", "bkg_after", "l1_centroid_err", "before_ecc", "after_ecc", "before_fwhm (pix)", "after_fwhm (pix)", "flag"]
         df.to_csv("fc_sgp_params_and_metrics.csv")
