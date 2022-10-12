@@ -2,11 +2,13 @@
 
 import numpy as np
 
+EPSILON = np.finfo(float).eps
+
 
 def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol_lam=1e-11, biter=0, siter=0, max_projs=1000):
     """
     Equation: min 0.5 * x' * diag(dia) * x - c' * x
-                subj to sum(x) = b
+                subj to sum(x) = b    
                 x >= 0
 
     """
@@ -20,7 +22,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
     # np.maximum takes element-wise maximum unlike np.max
     x = np.maximum(0, np.divide(c+lambda_, dia))
     if ccd_sat_level is not None:
-        x = np.minimum(ccd_sat_level/scaling-0.5, x)
+        x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
     r = np.sum(x) - b
 
     if abs(r) < tol_r:
@@ -32,7 +34,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
         lambda_ = lambda_ + dlambda_
         x = np.maximum(0, np.divide(c+lambda_, dia))
         if ccd_sat_level is not None:
-            x = np.minimum(ccd_sat_level/scaling-0.5, x)
+            x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
         r = np.sum(x) - b
         while r < 0:
             biter = biter + 1
@@ -47,7 +49,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
             rl = r
             x = np.maximum(0, np.divide(c+lambda_, dia))
             if ccd_sat_level is not None:
-                x = np.minimum(ccd_sat_level/scaling-0.5, x)
+                x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
             r = np.sum(x) - b
         lambdau = lambda_
         ru = r
@@ -57,7 +59,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
         lambda_ = lambda_ - dlambda_
         x = np.maximum(0, np.divide(c+lambda_, dia))
         if ccd_sat_level is not None:
-            x = np.minimum(ccd_sat_level/scaling-0.5, x)
+            x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
         r = np.sum(x) - b
         while r > 0:
             biter = biter + 1
@@ -74,7 +76,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
             ru = r
             x = np.maximum(0, np.divide(c+lambda_, dia))
             if ccd_sat_level is not None:
-                x = np.minimum(ccd_sat_level/scaling-0.5, x)
+                x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
             r = np.sum(x) - b
         lambdal = lambda_
         rl = r
@@ -83,13 +85,13 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
     if abs(ru) < tol_r:
         x = np.maximum(0, np.divide(c+lambdau, dia))
         if ccd_sat_level is not None:
-            x = np.minimum(ccd_sat_level/scaling-0.5, x)
-        return
+            x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
+        return x
     if abs(rl) < tol_r:
         x = np.maximum(0, np.divide(c+lambdal, dia))
         if ccd_sat_level is not None:
-            x = np.minimum(ccd_sat_level/scaling-0.5, x)
-        return
+            x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
+        return x
 
     # Secant phase
     s = 1 - rl/ru
@@ -97,7 +99,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
     lambda_ = lambdau - dlambda_
     x = np.maximum(0, np.divide(c+lambda_, dia))
     if ccd_sat_level is not None:
-        x = np.minimum(ccd_sat_level/scaling-0.5, x)
+        x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
     r = np.sum(x) - b
     maxit_s = max_projs - biter
 
@@ -137,7 +139,7 @@ def projectDF(b, c, dia, scaling, ccd_sat_level=None, lambda_=0, dlambda_=1, tol
 
         x = np.maximum(0, np.divide(c+lambda_, dia))
         if ccd_sat_level is not None:
-            x = np.minimum(ccd_sat_level/scaling-0.5, x)
+            x = np.minimum(ccd_sat_level/scaling-EPSILON, x)
         r = np.sum(x) - b
 
     return x

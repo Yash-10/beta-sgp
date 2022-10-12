@@ -1,7 +1,8 @@
+######### NOTE: This script is not used in the analysis and might not work well. #########
+
 import itertools
 import logging
 import glob
-import random
 
 import numpy as np
 
@@ -9,11 +10,36 @@ from photutils.background import MedianBackground
 from astropy.nddata import Cutout2D
 from astropy.io import fits
 
-from radprof_ellipticity import calculate_ellipticity_fwhm
 
 logging.basicConfig(filename='sgp_val.log', level=logging.INFO,
     format='%(asctime)s:%(funcName)s:%(message)s'
 )
+
+
+# from photutils.morphology import data_properties  # To determine ellipticity.
+# def calculate_ellipticity_fwhm(data, bkg, use_moments=True):
+#     """
+#     data: 2D numpy array
+#         Background subtracted data. Bkg is subtracted and the resulting image is used for analysis.
+#     use_moments: bool
+#         Whether to use image moments to estimate ellipticity, defaults to False.
+#         If False, ellipticity is estimated on a gaussian fitted on the source, currently not supported.
+#     """
+#     if use_moments:
+#         # Use background-subtracted data, as per photutils docs: https://photutils.readthedocs.io/en/stable/api/photutils.segmentation.SourceCatalog.html
+#         properties = data_properties(data, background=bkg)
+#         ellipticity, fwhm = properties.ellipticity, properties.fwhm
+#         return ellipticity, fwhm
+#     else:  # Use a more sophisticated model fitting.
+#         raise NotImplementedError("This is not yet supported, instead use `use_moments=True`")
+#         # # from photutils.detection import detect_sources  # Used to extract only the source region from the stamp.
+#         # from astropy.modeling import models, fitting  # For fitting model.
+#         # from astropy.convolution import Gaussian2DKernel
+
+#         # p_init = Gaussian2DKernel(x_stddev=2.)
+#         # fit_p = fitting.LevMarLSQFitter()
+#         # p = fit_p(p_init, data_)
+
 
 def setup(mode='test'):
     """
