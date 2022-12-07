@@ -64,8 +64,8 @@ from sklearn.preprocessing import KernelCenterer
 
 from flux_conserve_proj import projectDF
 
-max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M
 DEFAULT_PARAMS = (1000, 1e-4, 0.4, 1e-5, 1e5, 1e1, 3, 0.5, 1)
+max_projs, gamma, beta, alpha_min, alpha_max, alpha, M_alpha, tau, M = DEFAULT_PARAMS
 DEFAULT_COLUMNS = ['label', 'xcentroid', 'ycentroid', 'sky_centroid',
                    'bbox_xmin', 'bbox_xmax', 'bbox_ymin', 'bbox_ymax',
                    'area', 'semimajor_sigma', 'semiminor_sigma',

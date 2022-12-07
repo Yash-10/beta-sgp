@@ -75,9 +75,9 @@ def fit_radprof(radprof, table):
 if __name__ == "__main__":
     from sgp import DEFAULT_COLUMNS
 
-    orig_imgs = sorted(glob.glob('content/sgp_experiments/sgp_reconstruction_results/orig_cc*.fits*'))
-    kl_imgs = sorted(glob.glob('content/sgp_experiments/sgp_reconstruction_results/kldiv/deconv_*.fits*'))
-    beta_imgs = sorted(glob.glob('content/sgp_experiments/sgp_reconstruction_results/betadiv/deconv_*.fits*'))
+    orig_imgs = sorted(glob.glob('../results/content/sgp_experiments/sgp_reconstruction_results/orig_cc*.fits*'))
+    kl_imgs = sorted(glob.glob('../results/content/sgp_experiments/sgp_reconstruction_results/kldiv/deconv_*.fits*'))
+    beta_imgs = sorted(glob.glob('../results/content/sgp_experiments/sgp_reconstruction_results/betadiv/deconv_*.fits*'))
 
     radprof_params_list = []
     for o, k, b in zip(orig_imgs, kl_imgs, beta_imgs):
