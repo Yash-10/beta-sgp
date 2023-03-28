@@ -69,7 +69,7 @@ class PSF:
         # """Calculates PSF matrix locally, i.e. doesn't account for spatial PSF variation."""
 
         x1 = self.cos * x - self.sin * y
-        y1 = self.sin * x - self.cos * y
+        y1 = self.sin * x + self.cos * y
         rr = self.ax * x1 * x1 + self.ay * y1 * y1
 
         psf_pix = 0.0
@@ -78,9 +78,9 @@ class PSF:
         for igauss in range(self.ngauss):
             f = np.exp(rr)
             a1 = 1.0
-            for m in range(self.ldeg):
+            for m in range(self.ldeg+1):
                 a2 = 1.0
-                for n in range(self.ldeg-m):
+                for n in range(self.ldeg-m+1):
                     psf_pix += float(self.vec_coeffs[icomp])*f*a1*a2
                     icomp += 1
                     a2 *= y
@@ -98,20 +98,23 @@ class PSF:
 
         """
         pix_locs = []
-        for i in range(-15, 15):
-            for j in range(-15, 15):
+        psf_mat = np.zeros(961) # eg: 15*15 is the PSF matrix size to show.
+        for i in range(-15, 15+1):
+            for j in range(-15, 15+1):
                 pix_locs.append((i, j))
-        psf_mat = np.zeros(len(pix_locs)) # eg: 15*15 is the PSF matrix size to show.
-        for i, pix_loc in enumerate(pix_locs):
-            psf_mat[i] = self.calc_psf_pix(self.vec_coeffs, *pix_loc)
-        self.psf_mat = psf_mat.reshape(30, 30)
+                idx = j + self.hw + 31 * (i + self.hw)
+                psf_mat[idx] = self.calc_psf_pix(self.vec_coeffs, j, i)
+        # for i, pix_loc in enumerate(pix_locs):
+        #     psf_mat[i] = self.calc_psf_pix(self.vec_coeffs, *pix_loc)
+        self.psf_mat = psf_mat.reshape(31, 31)
 
         return self.psf_mat
 
     def show_psf_mat(self):
         """Shows the PSF as an image."""
         mat = self.get_psf_mat()
-        plt.matshow(mat)
+        plt.matshow(mat, origin='lower')
+        plt.colorbar()
         plt.show()
 
     def check_symmetric(self, coeffs, rtol=1e-05, atol=1e-08):
@@ -135,7 +138,7 @@ class PSF:
         mat = mat / np.sum(mat)
         return mat
 
-    def init_psf(xpsf, ypsf):
+    def init_psf(self, xpsf, ypsf):
         """Calculates the initial circular fit to the PSF.
 
         xpsf, ypsf: float
@@ -157,7 +160,7 @@ class PSF:
             a2 = 1.0
             for n in range(self.sdeg-m+1):
                 for icomp in range(ncomp):
-                    local_vec[icomp] += vec[itot] * a1 * a2
+                    local_vec[icomp] += self.vec_coeffs[itot] * a1 * a2
                     itot += 1
                 a2 *= ypsf - self.y_orig
             a1 *= xpsf - self.x_orig
@@ -172,12 +175,8 @@ if __name__ == "__main__":
         if file_.endswith(".txt"):
             print(file_)
             psf = PSF(file_)
-            try:
-                fits.writeto(file_.split(".")[0]+"_img.fits", psf.get_psf_mat())
-            except:
-                pass
-            mat = psf.get_psf_mat()
-            print(mat[mat<0])
+            mat = psf.normalize_psf_mat()
+            fits.writeto(file_.split(".")[0]+"_img.fits", mat, overwrite=True)
             mats.append(psf.get_psf_mat())
             titles.append(file_.split(".")[0])
 
