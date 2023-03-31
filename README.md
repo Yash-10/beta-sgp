@@ -61,7 +61,7 @@ If you find something not working as expected or anything weird, we would like t
 
 ## Code motivation
 
-The code presented here is a modified, Python implementation of the [Matlab SGP code of the SGP-dec software](https://www.unife.it/prin/software)<sup>3</sup>.
+The code presented here is a modified, Python implementation of the [Matlab SGP code of the SGP-dec software](https://www.unife.it/prin/software)<sup>3</sup>. However, it is not the official Python implementation of SGP-dec.
 
 ## References
 
