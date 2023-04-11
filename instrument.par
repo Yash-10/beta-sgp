@@ -1,0 +1,17 @@
+#========================================================#
+#                                                        #
+#  instrument.par         version 1.2.0   2009.01.12     #
+#                                                        #
+#  Copyright (C) 2009 by Wojtek Pych, CAMK PAN           #
+#  pych@camk.edu.pl                                      #
+#                                                        #
+#========================================================#
+#
+GAIN      = 3.0		// camera gain [electrons/ADU]
+MIN_LEVEL = 1.0		// minimum acceptable count
+SAT_LEVEL = 32000.0	// maximum acceptable count
+NX        = 512		// X size of the sub-frames
+NY        = 512		// Y size of the sub-frames
+MARG      = 20		// size of the overlap margin
+FITS      = fits	// FITS file extension
+END
