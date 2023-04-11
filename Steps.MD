@@ -10,7 +10,7 @@
 
 
 
-### Description of parameter files:
+### Description of parameter files (for the star stamp experiment):
 
 ```
 $ cat sfind.par 
