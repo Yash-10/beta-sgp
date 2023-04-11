@@ -1,0 +1,8 @@
+BASE_TYPE = A		// database type: A - ASCII, B - binary
+PHOT_TYPE = P		// photometry type: P - profile, A - aperture
+OUT_TYPE  = M		// output data: M - magnitude, F - residual flux
+NBAD      = 0		// maksimum number of bad pixels allowed
+AP_CORR   = -0.2	// photometry aperture correction
+MC        = 25.0	// magnitude conversion constant
+VERBOSE   = 2
+END

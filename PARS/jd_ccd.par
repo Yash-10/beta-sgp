@@ -1,0 +1,15 @@
+OBJECT   = "OBJECT"	// Object keyword
+UT-DATE  = "DATE-OBS"	// Date [YYYY-MM-DD] or keyword (exampl. "DATE")
+UT-START = "UTSTART"	// UT start [hh:mm:ss.s] or keyword (exampl. "UT")
+EXPTIME  = "EXPTIME"	// Exposure time [sec.] or keyword (exampl. "EXPOSURE")
+RA       = "RA"	// Object Right Ascension [hh:mm:ss.s] or keyword (exampl. "RA")
+DEC      = "DEC"	// Object Declination [dd:mm:ss.s] or keyword (exampl. "DEC")
+EQUINOX  = "EQUINOX"	// Epoch value or keyword (exampl. "EPOCH")
+TEL_LONG = -70:42.0	// Telescope East Longitude [degrees] or keyword
+TEL_LAT  = -29:00.5	// Telescope Latitude [degrees] or keyword
+FILTER   = "FILTER"	// Filter name keyword (not obligatory)
+AIRMASS  = "AIRMASS"	// Airmass keyword (exampl. "AIRMASS") or calculate
+FORMAT   = YYYY-MM-DD	// Date of observation strict format (M - digits m - letters)
+JD_CORR  = bary		// JD correction (none/heliocentric/barycentric)
+VERBOSE  = 1		// Verbosity level (0, 1, ...)
+END

@@ -1,0 +1,49 @@
+#========================================================#
+#                                                        #
+#  diapl_setup.par        version 1.1.4   2011.06.20     #
+#                                                        #
+#  Copyright (C) 2008-2011 by Wojtek Pych, CAMK PAN      #
+#  pych@camk.edu.pl                                      #
+#                                                        #
+# To be red by: diapl_setup.bash                         #
+#                                                        #
+#========================================================#
+
+#--------------------------------------------------------#
+# DATA_DIR:   Original images directory
+# BIN:        Executable binaries directory
+# INSTRUMENT: Instrument parameters file
+# IMAGES:     Input list of the images in ${DATA_DIR}/
+# TPLIMAGES:  List of template images
+# BADPIX:     List of bad pixels
+# MASK:       File name suffix for a mask image
+# FWHMS:      List of the images with FWHMs and background level computed
+# SHIFTS:     List of the images with shifts + information from ${FWHMS}
+# RIMAGES:    List of the images registered into possition of the reference
+# FIELD:      Name of the analysed field (user's free choise)
+# REFIM:      Astrometric reference image
+# TPLNAME:    Prefix of the filename for the template image.
+# EDGE:       "Limit for shifts versus transformation?"
+# MINSTARS:   Minimum number of stars found in an image to be accepted
+# RMTMP:      Remove temporary files. Use "yes" or "no"
+# VERBOSE:    Use "-v" or "" Affects scripts and not the compiled programs
+#--------------------------------------------------------#
+
+DATA_DIR="/home/oem/DIAPL/work"
+BIN="/home/oem/DIAPL/DIAPL_BIN"
+INSTRUMENT="instrument.par"
+IMAGES="images.txt"
+MASK="m"
+TPLIMAGES="template.list"
+FWHMS="fwhms.txt"
+SHIFTS="shifts.txt"
+RIMAGES="rimages"
+FIELD="field"
+REFIM="best_frame.fits"
+TPLNAME="tpl"
+EDGE=10
+MINSTARS=10
+RMTMP="yes"
+VERBOSE="-v"
+
+# END

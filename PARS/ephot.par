@@ -1,0 +1,8 @@
+APRAD    = 10.0         // Aperture radius
+ANRAD1   = 20.0         // Background annulus inner radius
+ANRAD2   = 25.0         // Background annulus outer radius
+BKG_MODE = 0            // Background mode (0=const=0; 1=median)
+NSIG_BKG = 2.0          // Sigma clipping threshold
+DBFORM   = A            // Output database format: A=ASCII, B=binary
+VERBOSE  = 1            // Verbosity level: 0=quiet, 1, 2, ...
+END

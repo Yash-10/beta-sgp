@@ -1,0 +1,16 @@
+#========================================================#
+#                                                        #
+#  resamplem.par       version 0.3     2011.01.31        #
+#                                                        #
+#  Copyright (C) 2010-2011 by Wojtek Pych, CAMK PAN      #
+#  pych@camk.edu.pl                                      #
+#                                                        #
+#========================================================#
+#
+MAX_GRAD = 2.0
+FIX_SAT = 1
+FIX_RINGS = 1
+N_SIG_RINGS = 2.0
+N_SIG_RM = 2.5
+VERBOSE = 1
+END
