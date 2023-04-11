@@ -84,4 +84,24 @@ MASKPAR     = bmask.par # bad pixels list's file name
 VERBOSE     = 0		# verbose level 0,1,2
 END
 
+$ cat instrument.par
+#========================================================#
+#                                                        #
+#  instrument.par         version 1.2.0   2009.01.12     #
+#                                                        #
+#  Copyright (C) 2009 by Wojtek Pych, CAMK PAN           #
+#  pych@camk.edu.pl                                      #
+#                                                        #
+#========================================================#
+#
+GAIN      = 1.22                // camera gain [electrons/ADU]
+MIN_LEVEL = 1.0         // minimum acceptable count
+SAT_LEVEL = 65000.0     // maximum acceptable count
+NX        = 410         // X size of the sub-frames
+NY        = 410         // Y size of the sub-frames
+MARG      = 20          // size of the overlap margin
+FITS      = fits        // FITS file extension
+END
+
+
 ```
