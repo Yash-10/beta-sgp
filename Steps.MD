@@ -13,6 +13,7 @@
 ### Description of parameter files:
 
 ```
+$ cat sfind.par 
 C_MIN   = 0.4	// covariance threshold for detection
 APRAD   = 1.2	// aperture radius in FWHMs
 ANRAD1  = 20.0	// lower radius of background annulus
@@ -22,7 +23,9 @@ DXY     = 1.0	// maximum distance of brightest pixel from centroid
 BKG_ALG = mode	// supported modes are: mode, median, mean
 VERBOSE = 1	// verbosity level
 END
-oem@Yash10:~/DIAPL/latest_sgp_application/M13_raw_images$ cat getpsf.par 
+
+
+$ cat getpsf.par 
 NBOX_X = 5
 NBOX_Y = 5
 NDEG_SPAT = 1
@@ -53,7 +56,9 @@ SIGMA_INC = 0.548
 SIGMA_MSCALE = 1.582
 VERBOSE = 1
 END
-oem@Yash10:~/DIAPL/latest_sgp_application/M13_raw_images$ cat fwhmm.par 
+
+
+$ cat fwhmm.par 
 #========================================================#
 #                                                        #
 #  fwhmm.par           version 3.5.0   2011.01.31        #
@@ -78,4 +83,5 @@ MAX_SKY     = 5000.0	# maximum sky level
 MASKPAR     = bmask.par # bad pixels list's file name
 VERBOSE     = 0		# verbose level 0,1,2
 END
+
 ```
