@@ -124,7 +124,11 @@ arXiv preprint: https://arxiv.org/abs/2207.10973
 
 ## Example results and comparison
 
-![Example result](https://github.com/Yash-10/beta-sgp/blob/master/readme_example.png?raw=true)
+Example 1:
+![Example 1](https://github.com/Yash-10/beta-sgp/blob/master/images/subdiv_example.png?raw=true)
+
+Example 2:
+![Example 2](https://github.com/Yash-10/beta-sgp/blob/master/images/crowded_subdiv_example.png?raw=true)
 
 ## Data availability
 
