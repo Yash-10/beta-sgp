@@ -1,7 +1,0 @@
-MIN_SCALE   = 0.5
-MAX_SCALE   = 2.0
-MEDIAN      = 0
-BKG_ALG     = mode	// supported modes are: mode, median, mean
-DCR_THRESH  = 3.0	// in stddev; if (DCR_THRESH > 0) detect cosmic rays
-VERBOSE     = 1
-END
