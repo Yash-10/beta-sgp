@@ -140,6 +140,10 @@ If you find something not working as expected or anything weird, we would like t
 
 The code presented here is a modified, Python implementation of the [Matlab SGP code of the SGP-dec software](https://www.unife.it/prin/software)<sup>3</sup>. However, it is not the official Python implementation of SGP-dec.
 
+## Code status
+
+Currently, SGP and $\beta$-SGP are written in two separate functions, despite both having many commonalities. This could make it slightly cumbersome to switch between both functions, especially given that $\beta$-SGP generalizes SGP. Future versions would focus on improving this aspect.
+
 ## References
 
 [1] Pych, W. Difference Image Analysis Package (DIAPL).
