@@ -1,6 +1,6 @@
 # Scaled Gradient Projection with $\beta$-divergence
 
-This repository contains the code implementation accompanying the paper: $\beta$-SGP: Scaled Gradient Projection with $\beta$-divergence for astronomical image restoration. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
+This repository contains the code implementation accompanying the paper: *$\beta$-SGP: Scaled Gradient Projection with $\beta$-divergence for astronomical image restoration*. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
 
 arXiv preprint: https://arxiv.org/abs/2207.10973
 
@@ -9,19 +9,98 @@ arXiv preprint: https://arxiv.org/abs/2207.10973
 <details>
 <summary>Click here to see the folder structure</summary>
 <pre>
-.
-├── paper_plots
-├── psf
-├── restoration
-│   └── test_data
-└── results
-    └── content
-        └── sgp_experiments
-            └── sgp_reconstruction_results
-                ├── betadiv
-                └── kldiv
 
-10 directories
+.
+├── images
+│   ├── crowded_flux_subdiv.png
+│   ├── crowded_subdiv_example.png
+│   ├── ellipticity_ratio.png
+│   ├── flux_frac_diff.png
+│   ├── flux_line_plot_stamps.png
+│   ├── flux_subdiv.png
+│   ├── fwhm_ratio.png
+│   └── subdiv_example.png
+├── pre_processing
+│   └── Automation.cl
+├── psf
+│   ├── get_psf_coeffs.bash
+│   ├── psf_calculate.py
+│   ├── psfccfbrd210048_1_1.bin.txt
+│   ├── psfccfbrd210048_1_1_img.fits
+│   ├── psf_estimation.bash
+│   ├── psf_mat_show.ipynb
+│   ├── psf_steps_and_params.MD
+│   └── README.md
+├── README.md
+├── restoration
+│   ├── application_sgp_star_stamps.py
+│   ├── application_sgp_subdivisions.py
+│   ├── flux_conserve_proj.py
+│   ├── sgp.py
+│   ├── simulated_test
+│   │   ├── data
+│   │   │   ├── NGC7027_255.mat
+│   │   │   └── satellite_25500.mat
+│   │   └── __init__.py
+│   ├── simulation_test_sgp.py
+│   ├── tests.py
+│   └── utils.py
+└── results
+    ├── CROWDED_SUBDIV_BEST_BETA_INIT.npy
+    ├── CROWDED_SUBDIV_EXEC_TIME_BETA.npy
+    ├── CROWDED_SUBDIV_EXEC_TIME.npy
+    ├── CROWDED_SUBDIV_NUM_ITERS_BETA.npy
+    ├── CROWDED_SUBDIV_NUM_ITERS.npy
+    ├── CROWDED_SUBDIV_ORIGCAT_2sigma.csv
+    ├── CROWDED_SUBDIV_ORIGCAT.csv
+    ├── CROWDED_SUBDIV_ORIG_FLUX_BETA.npy
+    ├── CROWDED_SUBDIV_ORIG_FLUX.npy
+    ├── CROWDED_SUBDIV_ORIGIMG_BETA.fits
+    ├── CROWDED_SUBDIV_ORIGIMG.fits
+    ├── CROWDED_SUBDIV_RESTORED_BETA.csv
+    ├── CROWDED_SUBDIV_RESTORED_BETA_MATCHED.csv
+    ├── CROWDED_SUBDIV_RESTORED.csv
+    ├── CROWDED_SUBDIV_RESTORED_FLUX_BETA.npy
+    ├── CROWDED_SUBDIV_RESTORED_FLUX.npy
+    ├── CROWDED_SUBDIV_RESTOREDIMG_BETA.fits
+    ├── CROWDED_SUBDIV_RESTOREDIMG.fits
+    ├── CROWDED_SUBDIV_RESTORED_MATCHED.csv
+    ├── ELLIPTICITY_RATIO_BETA.npy
+    ├── ELLIPTICITY_RATIO.npy
+    ├── EXEC_TIME_BETA.npy
+    ├── EXEC_TIME.npy
+    ├── FLUX_FRACTIONAL_DIFFERENCE_BETA.npy
+    ├── FLUX_FRACTIONAL_DIFFERENCE.npy
+    ├── FWHM_RATIO_BETA.npy
+    ├── FWHM_RATIO.npy
+    ├── NUM_ITERS_BETA.npy
+    ├── NUM_ITERS.npy
+    ├── ORIG_FLUX_BETA.npy
+    ├── ORIG_FLUX.npy
+    ├── RESTORED_FLUX_BETA.npy
+    ├── RESTORED_FLUX.npy
+    ├── SUBDIV_BEST_BETA_INIT.npy
+    ├── SUBDIV_EXEC_TIME_BETA.npy
+    ├── SUBDIV_EXEC_TIME.npy
+    ├── SUBDIV_NUM_ITERS_BETA.npy
+    ├── SUBDIV_NUM_ITERS.npy
+    ├── SUBDIV_ORIGCAT.csv
+    ├── SUBDIV_ORIG_FLUX_BETA.npy
+    ├── SUBDIV_ORIG_FLUX.npy
+    ├── SUBDIV_ORIGIMG_BETA.fits
+    ├── SUBDIV_ORIGIMG.fits
+    ├── SUBDIV_RESTORED_BETA.csv
+    ├── SUBDIV_RESTORED_BETA_MATCHED.csv
+    ├── SUBDIV_RESTORED.csv
+    ├── SUBDIV_RESTORED_FLUX_BETA.npy
+    ├── SUBDIV_RESTORED_FLUX.npy
+    ├── SUBDIV_RESTOREDIMG_BETA.fits
+    ├── SUBDIV_RESTOREDIMG.fits
+    ├── SUBDIV_RESTORED_MATCHED.csv
+    ├── WD_RADIAL_PROFILE_DISTANCE_BETA.npy
+    └── WD_RADIAL_PROFILE_DISTANCE.npy
+
+7 directories
 
 </pre>
 </details>
@@ -39,9 +118,9 @@ arXiv preprint: https://arxiv.org/abs/2207.10973
 
 - It contains the results in form of metrics embedded in .npy files.
 
-### `pre_processing1
+### `pre_processing`
 
-`Automation.cl` is the IRAF automation script we generated to automate the process of removing bad bias and flat frames during the image reduction process.
+- `Automation.cl` is the IRAF automation script we generated to automate the process of removing bad bias and flat frames during the image reduction process.
 
 ## Example results and comparison
 
