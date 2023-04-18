@@ -4,15 +4,15 @@
 # This script is a modified version of the "getpsf" routines from the original DIAPL software.
 
 #--------------- PARAMETERS TO EDIT ------------------
-ERR_PFX="\n\tERROR! psf_estimation.bash: "
-INSTRUMENT="instrument.par"
-FITS=`awk '($1=="FITS") {print $3}' ${INSTRUMENT}`
-MASK="m"
-BIN="/home/yash/DIAPL/DIAPL_BIN"
-IMAGES="Iimages.list"
-NX=`awk '($1=="NX") {print $3}' ${INSTRUMENT}`
-NY=`awk '($1=="NY") {print $3}' ${INSTRUMENT}`
-MARG=`awk '($1=="MARG") {print $3}' ${INSTRUMENT}`
+#ERR_PFX="\n\tERROR! psf_estimation.bash: "
+#INSTRUMENT="instrument.par"
+#FITS=`awk '($1=="FITS") {print $3}' ${INSTRUMENT}`
+#MASK="m"
+#BIN="/home/yash/DIAPL/DIAPL_BIN"
+#IMAGES="Iimages.list"
+#NX=`awk '($1=="NX") {print $3}' ${INSTRUMENT}`
+#NY=`awk '($1=="NY") {print $3}' ${INSTRUMENT}`
+#MARG=`awk '($1=="MARG") {print $3}' ${INSTRUMENT}`
 #-----------------------------------------------------
 
 if ! [ -r diapl_setup.bash ]
@@ -67,10 +67,14 @@ do
 			echo "${im}"
 			echo "--------------------"
 			
-			(( xl=1+MARG ))
-			(( xu=NX+MARG ))
-			(( yl=1+MARG ))
-			(( yu=NY+MARG ))
+			#(( xl=1+MARG ))
+			#(( xu=NX+MARG ))
+			#(( yl=1+MARG ))
+			#(( yu=NY+MARG ))
+			(( xu=NX*ix+MARG ))
+    			(( yu=NY*iy+MARG ))
+    			(( xl=1+NX*(ix-1)-MARG ))
+    			(( yl=1+NY*(iy-1)-MARG ))
 
 			fim=${name}c${prefix}.${FITS}
 			cim=${name}c${prefix}.coo
@@ -108,7 +112,7 @@ do
 				if [ $? -ne 0 ]
 				then
 				echo -e ${ERR_PFX}"sfind failed - aborting now\n"
-				exit 13
+				#exit 13
 				fi
 
 			echo "CALCULATE THE PSF COEFFICIENTS ON A SUB-FRAME"
@@ -123,7 +127,7 @@ do
 				if [ $? -ne 0 ]
 				then
 					echo -e ${ERR_PFX}"getpsf failed for ${fim}"${suffix}"\n"
-					exit 26
+					#exit 26
 				fi
 
 			# if [ $? -ne 0 ]; then continue; fi  # Go to next image if PSF calculation fails for current image.

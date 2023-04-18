@@ -1,6 +1,6 @@
 # Scaled Gradient Projection with $\beta$-divergence
 
-This repository contains the official code implementation accompanying the paper: *Image Improvement and Restoration in Optical Time Series*. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
+This repository contains the code implementation accompanying the paper: *$\beta$-SGP: Scaled Gradient Projection with $\beta$-divergence for astronomical image restoration*. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
 
 arXiv preprint: https://arxiv.org/abs/2207.10973
 
@@ -29,9 +29,7 @@ arXiv preprint: https://arxiv.org/abs/2207.10973
 ### `restoration`
 - `sgp.py` contains implementation for SGP with both, $\beta$-divergence and KL divergence.
 - `flux_conserve_proj.py` contains the flux conservation projection step code.
-- `sgp_validation.py` is for the optional validation step (which is not tested and never used by us), and `radialprofile.py` is used to calculate the radial profiles.
 - `utils.py` contains some utility functions helpful in other scripts.
-- `test_sgp.py` serves as a unit test module to compare the results with simulated data obtained from the SGP-dec software (https://www.unife.it/prin/software). The directory `restoration/test_data` stores the corresponding simulated images.
 
 ### `psf`
 
@@ -39,21 +37,19 @@ arXiv preprint: https://arxiv.org/abs/2207.10973
 
 ### `results`
 
-- It contains the results in form of metrics embedded in .csv files, images and the corresponding code.
+- It contains the results in form of metrics embedded in .npy files.
 
-### `paper_plots`
-
-- Contains scripts used to produce the figures from the paper.
+### `pre_processing1
 
 `Automation.cl` is the IRAF automation script we generated to automate the process of removing bad bias and flat frames during the image reduction process.
 
-## Example result and comparison
+## Example results and comparison
 
 ![Example result](https://github.com/Yash-10/beta-sgp/blob/master/readme_example.png?raw=true)
 
 ## Data availability
 
-The M13 globular cluster I-filter images (244 in number) used in our study are available [here](https://drive.google.com/file/d/13Vk2TpXgSB6IoLUIv-zdh-XI53wJp-0y/view?usp=sharing). These images have gone through the usual image reduction pipeline.
+The M13 globular cluster I-filter images (244 images) are available [here](https://drive.google.com/file/d/13Vk2TpXgSB6IoLUIv-zdh-XI53wJp-0y/view?usp=sharing). These images have gone through the usual image reduction pipeline.
 
 ## Bugs or issues
 

@@ -94,11 +94,11 @@ class PSF:
 
         Notes
         -----
-        x and y ranges lie from [-7, 8) i.e. 15X15 because we generate 15X15 PSF matrices.
+        x and y ranges lie from [-15, 15) i.e. 31X31 because we generate 31X31 PSF matrices.
 
         """
         pix_locs = []
-        psf_mat = np.zeros(961) # eg: 15*15 is the PSF matrix size to show.
+        psf_mat = np.zeros(961) # eg: 31*31 is the PSF matrix size to show.
         for i in range(-15, 15+1):
             for j in range(-15, 15+1):
                 pix_locs.append((i, j))
