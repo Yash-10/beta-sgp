@@ -1,6 +1,6 @@
 # Scaled Gradient Projection with $\beta$-divergence
 
-This repository contains the code implementation accompanying the paper: *$\beta$-SGP: Scaled Gradient Projection with $\beta$-divergence for astronomical image restoration*. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
+This repository contains the code implementation accompanying the paper: $\beta$-SGP: Scaled Gradient Projection with $\beta$-divergence for astronomical image restoration. It is aimed at single-image deconvolution of astronomical images with a known Point Spread Function.
 
 arXiv preprint: https://arxiv.org/abs/2207.10973
 
