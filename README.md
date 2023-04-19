@@ -155,4 +155,4 @@ Currently, SGP and $\beta$-SGP are written in two separate functions, despite bo
 ## License and copyright
 The code here is licensed under the [MIT License](https://github.com/Yash-10/beta-sgp/blob/master/LICENSE).
 
-Copyright (c) 2022 Yash Gondhalekar
+Copyright (c) 2023 Yash Gondhalekar
