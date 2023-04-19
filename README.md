@@ -151,3 +151,8 @@ Currently, SGP and $\beta$-SGP are written in two separate functions, despite bo
 [2] Efficient deconvolution methods for astronomical imaging: algorithms and IDL-GPU codes M.  Prato, R.  Cavicchioli, L.  Zanni, P.  Boccacci, M.  Bertero A&A 539 A133 (2012) DOI: 10.1051/0004-6361/201118681
 
 [3] Bonettini S., Zanella R., Zanni L., 2009, InvPr, 25, 015002. doi:10.1088/0266-5611/25/1/015002
+
+## License and copyright
+The code here is licensed under the [MIT License](https://github.com/Yash-10/beta-sgp/blob/master/LICENSE).
+
+Copyright (c) 2022 Yash Gondhalekar
