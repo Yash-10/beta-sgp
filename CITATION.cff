@@ -19,6 +19,8 @@ identifiers:
     description: >-
       Scaled Gradient Projection (SGP) algorithm with beta
       divergence
+repository-code: 'https://github.com/Yash-10/beta-sgp'
+url: 'https://github.com/Yash-10/beta-sgp'
 abstract: >-
   β-SGP deconvolves an astronomical image with a known Point
   Spread Function, providing a means for the restoration of
