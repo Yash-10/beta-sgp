@@ -21,6 +21,7 @@ identifiers:
       divergence
 repository-code: 'https://github.com/Yash-10/beta-sgp'
 url: 'https://github.com/Yash-10/beta-sgp'
+repository: 'https://ascl.net/code/v/3605'
 abstract: >-
   β-SGP deconvolves an astronomical image with a known Point
   Spread Function, providing a means for the restoration of
