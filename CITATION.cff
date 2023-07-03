@@ -1,0 +1,38 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  β-SGP: Scaled Gradient Projection algorithm using
+  β-divergence
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Yash
+    family-names: Gondhalekar
+    email: yashgondhalekar567@gmail.com
+identifiers:
+  - type: url
+    value: 'https://github.com/Yash-10/beta-sgp'
+    description: >-
+      Scaled Gradient Projection (SGP) algorithm with beta
+      divergence
+abstract: >-
+  β-SGP deconvolves an astronomical image with a known Point
+  Spread Function, providing a means for the restoration of
+  telescopic images due to issues ranging from atmospheric
+  turbulence to instrumental aberrations. The code supports
+  improved astrometry, deblending of overlapping sources,
+  faint source detection, identification of point sources
+  near bright extended objects, and other tasks. β-SGP
+  generalizes the Scaled Gradient Projection (SGP) image
+  deconvolution algorithm using β-divergence as a loss
+  function to restore distorted stellar shapes.
+keywords:
+  - image-restoration
+  - mathematical-optimization
+license: MIT
+commit: 3400aa444efecca8b12db37a9ba94d0e5c451805
+version: 0.1.0
